@@ -321,6 +321,9 @@
 312	common	kcmp			sys_kcmp
 313	common	finit_module		sys_finit_module
 
+#added by peng jiang
+314 common self_backup_mm sys_self_backup_mm
+
 #
 # x32-specific system call numbers start at 512 to avoid cache impact
 # for native 64-bit operation.
