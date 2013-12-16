@@ -4269,6 +4269,28 @@ void copy_user_huge_page(struct page *dst, struct page *src,
 		copy_user_highpage(dst + i, src + i, addr + i*PAGE_SIZE, vma);
 	}
 }
+
+/* added by peng jiang */
+
+/* back up mm_struct of current process */
+static int self_backup_mm(void)
+{
+	struct mm_struct *mm;
+
+	mm = dup_mm(current);
+	if(!mm) {
+		return -1;
+	} else {
+		current->backup_mm = mm;
+	}
+	return 0;
+}
+
+asmlinkage int sys_self_backup_mm(void)
+{
+	return self_backup_mm();
+}
+
 #endif /* CONFIG_TRANSPARENT_HUGEPAGE || CONFIG_HUGETLBFS */
 
 #if USE_SPLIT_PTE_PTLOCKS && BLOATED_SPINLOCKS
@@ -4286,26 +4308,6 @@ bool ptlock_alloc(struct page *page)
 void ptlock_free(struct page *page)
 {
 	kfree(page->ptl);
-}
-
-
-/* added by peng jiang */
-
-/* back up mm_struct of current process */
-static int self_backup_mm(void)
-{
-	struct mm_struct *mm;
-
-	mm = dup_mm(current);
-	if(!mm) {
-		return -1;
-	} else {
-		current->backup_mm = mm;
-	}
-}
-asmlinkage int sys_self_backup_mm(void)
-{
-	return self_backup_mm();
 }
 
 #endif
