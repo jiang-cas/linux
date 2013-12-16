@@ -323,6 +323,7 @@
 
 #added by peng jiang
 314 common self_backup_mm sys_self_backup_mm
+315 common share_backup_mm sys_share_backup_mm
 
 #
 # x32-specific system call numbers start at 512 to avoid cache impact

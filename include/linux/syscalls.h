@@ -850,4 +850,5 @@ asmlinkage long sys_finit_module(int fd, const char __user *uargs, int flags);
 
 /* added by peng jiang */
 asmlinkage int sys_self_backup_mm(void);
+asmlinkage int sys_share_backup_mm(void);
 #endif

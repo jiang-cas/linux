@@ -4291,6 +4291,22 @@ asmlinkage int sys_self_backup_mm(void)
 	return self_backup_mm();
 }
 
+static int share_backup_mm(void) 
+{
+	if(current->parent->backup_mm) {
+		current->backup_mm = current->parent->backup_mm;
+		return 0;
+	} else {
+		return -1;
+	}
+}
+
+asmlinkage int sys_share_backup_mm(void) 
+{
+	return share_backup_mm();
+}
+
+
 #endif /* CONFIG_TRANSPARENT_HUGEPAGE || CONFIG_HUGETLBFS */
 
 #if USE_SPLIT_PTE_PTLOCKS && BLOATED_SPINLOCKS
