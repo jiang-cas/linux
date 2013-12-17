@@ -69,6 +69,9 @@
 
 #include "internal.h"
 
+
+struct mm_pte_list;
+
 #ifdef LAST_CPUPID_NOT_IN_PAGE_FLAGS
 #warning Unfortunate NUMA and NUMA Balancing config, growing page-frame for last_cpupid.
 #endif
@@ -3667,7 +3670,7 @@ static int handle_pte_fault(struct mm_struct *mm,
 		/*added by peng jiang*/
 
 			if(!(vma->flags & VM_GROWSDOWN)) {
-			//	current->mm_pte_list
+				
 			}
 			
 
