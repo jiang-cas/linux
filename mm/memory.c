@@ -3668,9 +3668,21 @@ static int handle_pte_fault(struct mm_struct *mm,
 		if (!pte_write(entry)) {
 		/*added by peng jiang*/
 
-			if(current->isgeap && !(vma->vm_flags & VM_GROWSDOWN)) {
+			struct vm_area_struct *vmabss;
+			struct vm_area_struct *vmabssres = NULL;
+			unsigned long bssend = mm->end_data;
+			unsigned long aaddrr_low = mm->start_data;
+			for(vmabss = mm->mmap;vmabss;vmabss = vmabss->vm_next) {
+				if(vmabss->vm_start == aaddrr_low) {
+					aaddrr_low = vma->vm_end;
+					vmabssres = vmabss;
+				}
+			}
+
+			if(vmabssres)bssend = vmabssres->vm_end;
+			if(current->isgeap && address >= mm->start_data && address < bssend) {
 				struct copied_pte *new_pte;
-				printk(KERN_INFO "add pte_list\n");
+				printk(KERN_INFO "add %ld to pte_list\n", address);
 				new_pte = kmalloc(sizeof(*new_pte), GFP_KERNEL);
 				new_pte->addr = address;
 				list_add(&new_pte->list, &current->diffpte.list);
