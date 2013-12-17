@@ -3670,6 +3670,7 @@ static int handle_pte_fault(struct mm_struct *mm,
 		/*added by peng jiang*/
 
 			if(current->isgeap && !(vma->flags & VM_GROWSDOWN)) {
+				printk(KERN_INFO "add pte_list\n");
 				struct copied_pte *new_pte;
 				new_pte = kmalloc(sizeof(*new_pte), GFP_KERNEL);
 				new_pte->addr = address;
@@ -4297,6 +4298,7 @@ static int self_backup_mm(void)
 		return -1;
 	} else {
 		current->backup_mm = mm;
+		current->isgeap = 1;
 	}
 	return 0;
 }
@@ -4309,6 +4311,7 @@ asmlinkage int sys_self_backup_mm(void)
 static int share_backup_mm(void) 
 {
 	if(current->parent->backup_mm) {
+		self_backup_mm();
 		current->shared_mm = current->parent->backup_mm;
 		current->parent->shared_mm = current->parent->backup_mm;
 		return 0;
