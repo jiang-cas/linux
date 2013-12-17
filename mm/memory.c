@@ -70,7 +70,6 @@
 #include "internal.h"
 
 
-struct copied_pte;
 
 #ifdef LAST_CPUPID_NOT_IN_PAGE_FLAGS
 #warning Unfortunate NUMA and NUMA Balancing config, growing page-frame for last_cpupid.
@@ -3669,12 +3668,12 @@ static int handle_pte_fault(struct mm_struct *mm,
 		if (!pte_write(entry)) {
 		/*added by peng jiang*/
 
-			if(current->isgeap && !(vma->flags & VM_GROWSDOWN)) {
-				printk(KERN_INFO "add pte_list\n");
+			if(current->isgeap && !(vma->vm_flags & VM_GROWSDOWN)) {
 				struct copied_pte *new_pte;
+				printk(KERN_INFO "add pte_list\n");
 				new_pte = kmalloc(sizeof(*new_pte), GFP_KERNEL);
 				new_pte->addr = address;
-				list_add(new_pte->list, current->diffpte->list);
+				list_add(&new_pte->list, &current->diffpte.list);
 			}
 			
 
@@ -4298,6 +4297,8 @@ static int self_backup_mm(void)
 		return -1;
 	} else {
 		current->backup_mm = mm;
+		current->diffpte.addr = 0;
+		INIT_LIST_HEAD(&current->diffpte.list);
 		current->isgeap = 1;
 	}
 	return 0;
@@ -4310,8 +4311,7 @@ asmlinkage int sys_self_backup_mm(void)
 
 static int share_backup_mm(void) 
 {
-	if(current->parent->backup_mm) {
-		self_backup_mm();
+	if(current->parent->backup_mm && self_backup_mm() == 0) {
 		current->shared_mm = current->parent->backup_mm;
 		current->parent->shared_mm = current->parent->backup_mm;
 		return 0;
