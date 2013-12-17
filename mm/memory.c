@@ -4294,7 +4294,8 @@ asmlinkage int sys_self_backup_mm(void)
 static int share_backup_mm(void) 
 {
 	if(current->parent->backup_mm) {
-		current->backup_mm = current->parent->backup_mm;
+		current->shared_mm = current->parent->backup_mm;
+		current->parent->shared_mm = current->parent->backup_mm;
 		return 0;
 	} else {
 		return -1;
