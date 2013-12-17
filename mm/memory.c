@@ -3663,9 +3663,18 @@ static int handle_pte_fault(struct mm_struct *mm,
 	if (unlikely(!pte_same(*pte, entry)))
 		goto unlock;
 	if (flags & FAULT_FLAG_WRITE) {
-		if (!pte_write(entry))
+		if (!pte_write(entry)) {
+		/*added by peng jiang*/
+
+			if(!(vma->flags & VM_GROWSDOWN)) {
+			//	current->mm_pte_list
+			}
+			
+
 			return do_wp_page(mm, vma, address,
 					pte, pmd, ptl, entry);
+
+		}
 		entry = pte_mkdirty(entry);
 	}
 	entry = pte_mkyoung(entry);

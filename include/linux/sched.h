@@ -1040,6 +1040,11 @@ enum perf_event_task_context {
 	perf_nr_task_contexts,
 };
 
+struct mm_pte_list {
+	pte_t *pte;
+	struct list_head list;
+};
+
 struct task_struct {
 	volatile long state;	/* -1 unrunnable, 0 runnable, >0 stopped */
 	void *stack;
@@ -1100,7 +1105,8 @@ struct task_struct {
 #ifdef CONFIG_SMP
 	struct plist_node pushable_tasks;
 #endif
-
+/*added by peng jiang*/
+	struct mm_pte_list diffpte = {.pte = NULL, .list = LIST_HEAD_INIT(diffpte.list)};
 	struct mm_struct *mm, *active_mm, *backup_mm, *shared_mm;
 #ifdef CONFIG_COMPAT_BRK
 	unsigned brk_randomized:1;
