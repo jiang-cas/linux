@@ -1041,7 +1041,7 @@ enum perf_event_task_context {
 };
 
 struct copied_pte {
-	pte_t *pte;
+	unsigned long addr;
 	struct list_head list;
 };
 
@@ -1106,7 +1106,8 @@ struct task_struct {
 	struct plist_node pushable_tasks;
 #endif
 /*added by peng jiang*/
-	struct copied_pte diffpte = {.pte = NULL, .list = LIST_HEAD_INIT(diffpte.list)};
+	int isgeap = 0;
+	struct copied_pte diffpte = {.addr = NULL, .list = LIST_HEAD_INIT(diffpte.list)};
 	struct mm_struct *mm, *active_mm, *backup_mm, *shared_mm;
 #ifdef CONFIG_COMPAT_BRK
 	unsigned brk_randomized:1;

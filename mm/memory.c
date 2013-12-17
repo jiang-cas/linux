@@ -70,7 +70,7 @@
 #include "internal.h"
 
 
-struct mm_pte_list;
+struct copied_pte;
 
 #ifdef LAST_CPUPID_NOT_IN_PAGE_FLAGS
 #warning Unfortunate NUMA and NUMA Balancing config, growing page-frame for last_cpupid.
@@ -3669,8 +3669,11 @@ static int handle_pte_fault(struct mm_struct *mm,
 		if (!pte_write(entry)) {
 		/*added by peng jiang*/
 
-			if(!(vma->flags & VM_GROWSDOWN)) {
-				
+			if(current->isgeap && !(vma->flags & VM_GROWSDOWN)) {
+				struct copied_pte *new_pte;
+				new_pte = kmalloc(sizeof(*new_pte), GFP_KERNEL);
+				new_pte->addr = address;
+				list_add(new_pte->list, current->diffpte->list);
 			}
 			
 
