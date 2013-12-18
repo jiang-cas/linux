@@ -3667,7 +3667,7 @@ static int handle_pte_fault(struct mm_struct *mm,
 	if (flags & FAULT_FLAG_WRITE) {
 		if (!pte_write(entry)) {
 		/*added by peng jiang*/
-
+/*
 			struct vm_area_struct *vmabss;
 			struct vm_area_struct *vmabssres = NULL;
 			unsigned long bssend = mm->end_data;
@@ -3688,7 +3688,7 @@ static int handle_pte_fault(struct mm_struct *mm,
 				list_add(&new_pte->list, &current->diffpte.list);
 			}
 			
-
+*/
 			return do_wp_page(mm, vma, address,
 					pte, pmd, ptl, entry);
 
@@ -4335,6 +4335,57 @@ static int share_backup_mm(void)
 asmlinkage int sys_share_backup_mm(void) 
 {
 	return share_backup_mm();
+}
+
+/* merge data and bss segment of two address space : from mm1 to mm2
+	return 0 if ok
+	return -1 if fail
+*/
+static int merge_data_and_bss(struct mm_struct *mm1, struct mm_struct *mm2)
+{
+	unsigned long start = mm1->start_data;
+	unsigned long end = mm1->start_brk;
+	if(start == mm2->start_data && end = mm2->start_brk) {
+		unsigned long addr;
+		for(addr=start;addr<end;addr+=PAGE_SIZE) {
+			pte_t *pte1, *pte2;
+			pgd = pgd_offset(mm1, addr);
+			if(!pgd_none(*pgd))
+				pud = pud_offset(pgd, addr);
+				if(!pud_none(*pud))
+					pmd = pmd_offset(pud, addr);
+					if(!pmd_none(*pmd))
+						pte = pte_offset_map(pmd, addr);
+						if(!pte_none(*pte))
+							pte1 = pte;
+			pgd = pgd_offset(mm2, addr);
+			if(!pgd_none(*pgd))
+				pud = pud_offset(pgd, addr);
+				if(!pud_none(*pud))
+					pmd = pmd_offset(pud, addr);
+					if(!pmd_none(*pmd))
+						pte = pte_offset_map(pmd, addr);
+						if(!pte_none(*pte))
+							pte2 = pte;
+
+			if(pte1 && pte2 && !pte_same(*pte1, *pte2)) {
+				struct page *page;
+				struct vm_area_struct *vma;
+				unsigned long pa = addr & PAGE_MASK;
+				get_user_pages(current, mm2, pa, 1, 0, 0, &page, NULL);
+				vma = find_vma(mm2, page);
+				pte_free(mm2, page);
+				set_pte(pte2, *pte1);
+				pte_unmap(pte1);
+				pte_unmap(pte2);
+				page_add_anon_rmap(page, vma, addr);
+				flush_tlb_page(vma, addr);
+			}
+		
+		}
+		return 0;
+	}
+	return -1;
 }
 
 
