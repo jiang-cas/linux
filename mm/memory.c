@@ -4300,7 +4300,7 @@ void copy_user_huge_page(struct page *dst, struct page *src,
 /* added by peng jiang */
 
 /* back up mm_struct of current process */
-static int self_backup_mm(void)
+static int backup_mm(struct mm_struct *destmm)
 {
 	struct mm_struct *mm;
 
@@ -4308,24 +4308,28 @@ static int self_backup_mm(void)
 	if(!mm) {
 		return -1;
 	} else {
-		current->backup_mm = mm;
-		current->diffpte.addr = 0;
-		INIT_LIST_HEAD(&current->diffpte.list);
-		current->isgeap = 1;
+		destmm = mm;
 	}
 	return 0;
 }
 
-asmlinkage int sys_self_backup_mm(void)
+static int init_self_mm(void)
 {
-	return self_backup_mm();
+	int a1 = backup_mm(current->backup_mm);
+	int a2 = backup_mm(current->shared_mm);
+	if(!(a1 || a2))return 0;
+	return -1;
 }
 
-static int share_backup_mm(void) 
+asmlinkage int sys_self_backup_mm(void)
 {
-	if(current->parent->backup_mm && self_backup_mm() == 0) {
-		current->shared_mm = current->parent->backup_mm;
-		current->parent->shared_mm = current->parent->backup_mm;
+	return init_self_mm();
+}
+
+static int clone_backup_mm(void) 
+{
+	if(current->parent->backup_mm && current->parent->shared_mm) {
+		current->shared_mm = current->parent->shared_mm;
 		return 0;
 	} else {
 		return -1;
@@ -4334,20 +4338,25 @@ static int share_backup_mm(void)
 
 asmlinkage int sys_share_backup_mm(void) 
 {
-	return share_backup_mm();
+	return clone_backup_mm();
 }
 
-/* merge data and bss segment of two address space : from mm1 to mm2
+/* commit data and bss segment of two address space : from mm1 to mm2
 	return 0 if ok
 	return -1 if fail
+	if an address has been changed, the byte will be set to 1, or it will be 0
+
+	mm1 : mm
+	mm2 : backup_mm
 */
-static int merge_data_and_bss(struct mm_struct *mm1, struct mm_struct *mm2)
+static int commit_data_and_bss(struct mm_struct *mm1, struct mm_struct *mm2)
 {
 	unsigned long start = mm1->start_data;
 	unsigned long end = mm1->start_brk;
-	if(start == mm2->start_data && end = mm2->start_brk) {
+	if(start == mm2->start_data && end == mm2->start_brk) {
 		unsigned long addr;
 		for(addr=start;addr<end;addr+=PAGE_SIZE) {
+			pgd_t *pgd; pud_t *pud; pmd_t *pmd; pte_t *pte;
 			pte_t *pte1, *pte2;
 			pgd = pgd_offset(mm1, addr);
 			if(!pgd_none(*pgd))
@@ -4369,19 +4378,97 @@ static int merge_data_and_bss(struct mm_struct *mm1, struct mm_struct *mm2)
 							pte2 = pte;
 
 			if(pte1 && pte2 && !pte_same(*pte1, *pte2)) {
-				struct page *page;
-				struct vm_area_struct *vma;
+				struct page *page1, *page2;
+				void *v1, *v2;
 				unsigned long pa = addr & PAGE_MASK;
-				get_user_pages(current, mm2, pa, 1, 0, 0, &page, NULL);
-				vma = find_vma(mm2, page);
-				pte_free(mm2, page);
-				set_pte(pte2, *pte1);
-				pte_unmap(pte1);
-				pte_unmap(pte2);
-				page_add_anon_rmap(page, vma, addr);
-				flush_tlb_page(vma, addr);
+				int i;
+				const char *src;
+				char *dst;
+				get_user_pages(current, mm1, pa, 1, 0, 0, &page1, NULL);
+				get_user_pages(current, mm2, pa, 1, 0, 0, &page2, NULL);
+				v1 = kmap_atomic(page1);
+				v2 = kmap_atomic(page2);
+				src = v1; dst = v2;
+				for(i=0;i<PAGE_SIZE;i++) {
+					if(src[i] != dst[i])
+						dst[i] = 1;
+					else
+						dst[i] = 0;
+				}
+				kunmap_atomic(v1);
+				kunmap_atomic(v2);
 			}
-		
+		}
+		return 0;
+	}
+	return -1;
+}
+
+
+/*
+mm1 : mm
+mm2 : backup_mm
+mm3 : shared_mm
+
+push data from mm to shared_mm
+
+*/
+static int push_data_and_bss(struct mm_struct *mm1, struct mm_struct *mm2, struct mm_struct *mm3)
+{
+	unsigned long start = mm1->start_data;
+	unsigned long end = mm1->start_brk;
+	if(start == mm2->start_data && end == mm2->start_brk) {
+		unsigned long addr;
+		for(addr=start;addr<end;addr+=PAGE_SIZE) {
+			pgd_t *pgd; pud_t *pud; pmd_t *pmd; pte_t *pte;
+			pte_t *pte1, *pte2;
+			pgd = pgd_offset(mm1, addr);
+			if(!pgd_none(*pgd))
+				pud = pud_offset(pgd, addr);
+				if(!pud_none(*pud))
+					pmd = pmd_offset(pud, addr);
+					if(!pmd_none(*pmd))
+						pte = pte_offset_map(pmd, addr);
+						if(!pte_none(*pte))
+							pte1 = pte;
+			pgd = pgd_offset(mm2, addr);
+			if(!pgd_none(*pgd))
+				pud = pud_offset(pgd, addr);
+				if(!pud_none(*pud))
+					pmd = pmd_offset(pud, addr);
+					if(!pmd_none(*pmd))
+						pte = pte_offset_map(pmd, addr);
+						if(!pte_none(*pte))
+							pte2 = pte;
+
+			if(pte1 && pte2 && !pte_same(*pte1, *pte2)) {
+				struct page *page1, *page2, *page3;
+				char *v1, *v2, *v3;
+				unsigned long pa = addr & PAGE_MASK;
+				int i;
+				const char *src;
+				char *dst, *changed;
+				get_user_pages(current, mm1, pa, 1, 0, 0, &page1, NULL);
+				get_user_pages(current, mm2, pa, 1, 0, 0, &page2, NULL);
+				get_user_pages(current, mm3, pa, 1, 0, 0, &page3, NULL);
+				v1 = kmap_atomic(page1);
+				v2 = kmap_atomic(page2);
+				v3 = kmap_atomic(page3);
+
+				src = v1; dst = v3;
+
+				for(i=0;i<PAGE_SIZE;i++) {
+
+					/* v2[i] means this byte has been committed, and thus need to be pushed */
+					if(changed[i]) {
+						dst[i] = src[i];
+					}
+				}
+				kunmap_atomic(v1);
+				kunmap_atomic(v2);
+				kunmap_atomic(v3);
+
+			}
 		}
 		return 0;
 	}
