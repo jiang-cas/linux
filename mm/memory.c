@@ -4321,7 +4321,7 @@ static int init_self_mm(void)
 	return -1;
 }
 
-asmlinkage int sys_self_backup_mm(void)
+asmlinkage int sys_init_geap(void)
 {
 	return init_self_mm();
 }
@@ -4336,7 +4336,7 @@ static int clone_backup_mm(void)
 	}
 }
 
-asmlinkage int sys_share_backup_mm(void) 
+asmlinkage int sys_clone_geap(void) 
 {
 	return clone_backup_mm();
 }

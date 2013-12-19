@@ -322,8 +322,8 @@
 313	common	finit_module		sys_finit_module
 
 #added by peng jiang
-314 common self_backup_mm sys_self_backup_mm
-315 common share_backup_mm sys_share_backup_mm
+314 common init_geap sys_init_geap
+315 common clone_geap sys_clone_geap
 
 #
 # x32-specific system call numbers start at 512 to avoid cache impact

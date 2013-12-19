@@ -849,6 +849,6 @@ asmlinkage long sys_kcmp(pid_t pid1, pid_t pid2, int type,
 asmlinkage long sys_finit_module(int fd, const char __user *uargs, int flags);
 
 /* added by peng jiang */
-asmlinkage int sys_self_backup_mm(void);
-asmlinkage int sys_share_backup_mm(void);
+asmlinkage int sys_init_geap(void);
+asmlinkage int sys_clone_geap(void);
 #endif
