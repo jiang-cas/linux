@@ -4341,6 +4341,56 @@ asmlinkage int sys_clone_geap(void)
 	return clone_backup_mm();
 }
 
+/*
+	copy pte of data and bss segment from mm1 to mm2
+*/
+static int copy_pte_of_data(struct mm_struct *mm1, struct mm_struct *mm2)
+{
+	unsigned long start = mm1->start_data;
+	unsigned long end = mm1->start_brk;
+	if(start == mm2->start_data && end == mm2->start_brk) {
+		unsigned long addr;
+		for(addr=start;addr<end;addr+=PAGE_SIZE) {
+			pgd_t *pgd=NULL; pud_t *pud=NULL; pmd_t *pmd=NULL; pte_t *pte=NULL;
+			pte_t *pte1=NULL, *pte2=NULL;
+			pgd = pgd_offset(mm1, addr);
+			if(!pgd_none(*pgd))
+				pud = pud_offset(pgd, addr);
+				if(!pud_none(*pud))
+					pmd = pmd_offset(pud, addr);
+					if(!pmd_none(*pmd))
+						pte = pte_offset_map(pmd, addr);
+						if(!pte_none(*pte))
+							pte1 = pte;
+			pgd = pgd_offset(mm2, addr);
+			if(!pgd_none(*pgd))
+				pud = pud_offset(pgd, addr);
+				if(!pud_none(*pud))
+					pmd = pmd_offset(pud, addr);
+					if(!pmd_none(*pmd))
+						pte = pte_offset_map(pmd, addr);
+						if(!pte_none(*pte))
+							pte2 = pte;
+
+			if(pte1 && pte2 && !pte_same(*pte1, *pte2)) {
+				struct page *page;
+				struct vm_area_struct *vma;
+				unsigned long pa = addr & PAGE_MASK;
+				get_user_pages(current, mm2, pa, 1, 0, 0, &page, NULL);
+				vma = find_vma(mm2, addr);
+				pte_free(mm2, page);
+				set_pte(pte2, *pte1);
+				pte_unmap(pte1);
+				pte_unmap(pte2);
+				page_add_anon_rmap(page, vma, addr);
+				flush_tlb_page(vma, addr);
+			}
+		}
+		return 0;
+	}
+	return -1;
+}
+
 /* commit data and bss segment of two address space : from mm1 to mm2
 	return 0 if ok
 	return -1 if fail
@@ -4474,6 +4524,7 @@ static int push_data_and_bss(struct mm_struct *mm1, struct mm_struct *mm2, struc
 
 			}
 		}
+		copy_pte_of_data(current->mm, current->backup_mm);
 		return 0;
 	}
 	return -1;
@@ -4482,56 +4533,6 @@ static int push_data_and_bss(struct mm_struct *mm1, struct mm_struct *mm2, struc
 static int push_geap_data(void)
 {
 	return push_data_and_bss(current->mm, current->backup_mm, current->shared_mm);
-}
-
-/*
-	copy pte of data and bss segment from mm1 to mm2
-*/
-static int copy_pte_of_data(struct mm_struct *mm1, struct mm_struct *mm2)
-{
-	unsigned long start = mm1->start_data;
-	unsigned long end = mm1->start_brk;
-	if(start == mm2->start_data && end == mm2->start_brk) {
-		unsigned long addr;
-		for(addr=start;addr<end;addr+=PAGE_SIZE) {
-			pgd_t *pgd=NULL; pud_t *pud=NULL; pmd_t *pmd=NULL; pte_t *pte=NULL;
-			pte_t *pte1=NULL, *pte2=NULL;
-			pgd = pgd_offset(mm1, addr);
-			if(!pgd_none(*pgd))
-				pud = pud_offset(pgd, addr);
-				if(!pud_none(*pud))
-					pmd = pmd_offset(pud, addr);
-					if(!pmd_none(*pmd))
-						pte = pte_offset_map(pmd, addr);
-						if(!pte_none(*pte))
-							pte1 = pte;
-			pgd = pgd_offset(mm2, addr);
-			if(!pgd_none(*pgd))
-				pud = pud_offset(pgd, addr);
-				if(!pud_none(*pud))
-					pmd = pmd_offset(pud, addr);
-					if(!pmd_none(*pmd))
-						pte = pte_offset_map(pmd, addr);
-						if(!pte_none(*pte))
-							pte2 = pte;
-
-			if(pte1 && pte2 && !pte_same(*pte1, *pte2)) {
-				struct page *page;
-				struct vm_area_struct *vma;
-				unsigned long pa = addr & PAGE_MASK;
-				get_user_pages(current, mm2, pa, 1, 0, 0, &page, NULL);
-				vma = find_vma(mm2, addr);
-				pte_free(mm2, page);
-				set_pte(pte2, *pte1);
-				pte_unmap(pte1);
-				pte_unmap(pte2);
-				page_add_anon_rmap(page, vma, addr);
-				flush_tlb_page(vma, addr);
-			}
-		}
-		return 0;
-	}
-	return -1;
 }
 
 static int rollback_data_and_bss(void)
