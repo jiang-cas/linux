@@ -324,6 +324,10 @@
 #added by peng jiang
 314 common init_geap sys_init_geap
 315 common clone_geap sys_clone_geap
+316 common commit_geap sys_commit_geap
+317 common push_geap sys_push_geap
+318 common pull_geap sys_pull_geap
+319 common rollback_geap sys_rollback_geap
 
 #
 # x32-specific system call numbers start at 512 to avoid cache impact

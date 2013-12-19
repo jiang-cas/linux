@@ -851,4 +851,8 @@ asmlinkage long sys_finit_module(int fd, const char __user *uargs, int flags);
 /* added by peng jiang */
 asmlinkage int sys_init_geap(void);
 asmlinkage int sys_clone_geap(void);
+asmlinkage int sys_commit_geap(void);
+asmlinkage int sys_push_geap(void);
+asmlinkage int sys_pull_geap(void);
+asmlinkage int sys_rollback_geap(void);
 #endif

@@ -4328,7 +4328,7 @@ asmlinkage int sys_init_geap(void)
 
 static int clone_backup_mm(void) 
 {
-	if(current->parent->backup_mm && current->parent->shared_mm) {
+	if(current->parent->backup_mm && current->parent->shared_mm && !backup_mm(current->backup_mm)) {
 		current->shared_mm = current->parent->shared_mm;
 		return 0;
 	} else {
@@ -4404,6 +4404,10 @@ static int commit_data_and_bss(struct mm_struct *mm1, struct mm_struct *mm2)
 	return -1;
 }
 
+static int commit_geap_data(void)
+{
+	return commit_data_and_bss(current->mm, current->backup_mm);
+}
 
 /*
 mm1 : mm
@@ -4473,6 +4477,93 @@ static int push_data_and_bss(struct mm_struct *mm1, struct mm_struct *mm2, struc
 		return 0;
 	}
 	return -1;
+}
+
+static int push_geap_data(void)
+{
+	return push_data_and_bss(current->mm, current->backup_mm, current->shared_mm);
+}
+
+/*
+	copy pte of data and bss segment from mm1 to mm2
+*/
+static int copy_pte_of_data(struct mm_struct *mm1, struct mm_struct *mm2)
+{
+	unsigned long start = mm1->start_data;
+	unsigned long end = mm1->start_brk;
+	if(start == mm2->start_data && end == mm2->start_brk) {
+		unsigned long addr;
+		for(addr=start;addr<end;addr+=PAGE_SIZE) {
+			pgd_t *pgd; pud_t *pud; pmd_t *pmd; pte_t *pte;
+			pte_t *pte1, *pte2;
+			pgd = pgd_offset(mm1, addr);
+			if(!pgd_none(*pgd))
+				pud = pud_offset(pgd, addr);
+				if(!pud_none(*pud))
+					pmd = pmd_offset(pud, addr);
+					if(!pmd_none(*pmd))
+						pte = pte_offset_map(pmd, addr);
+						if(!pte_none(*pte))
+							pte1 = pte;
+			pgd = pgd_offset(mm2, addr);
+			if(!pgd_none(*pgd))
+				pud = pud_offset(pgd, addr);
+				if(!pud_none(*pud))
+					pmd = pmd_offset(pud, addr);
+					if(!pmd_none(*pmd))
+						pte = pte_offset_map(pmd, addr);
+						if(!pte_none(*pte))
+							pte2 = pte;
+
+			if(pte1 && pte2 && !pte_same(*pte1, *pte2)) {
+				struct page *page;
+				struct vm_area_struct *vma;
+				unsigned long pa = addr & PAGE_MASK;
+				get_user_pages(current, mm2, pa, 1, 0, 0, &page, NULL);
+				vma = find_vma(mm2, addr);
+				pte_free(mm2, page);
+				set_pte(pte2, *pte1);
+				pte_unmap(pte1);
+				pte_unmap(pte2);
+				page_add_anon_rmap(page, vma, addr);
+				flush_tlb_page(vma, addr);
+			}
+		}
+		return 0;
+	}
+	return -1;
+}
+
+static int rollback_data_and_bss(void)
+{
+	copy_pte_of_data(current->backup_mm, current->mm);
+}
+
+static int pull_data_and_bss(void)
+{
+	copy_pte_of_data(current->shared_mm, current->mm);
+	copy_pte_of_data(current->shared_mm, current->backup_mm);
+}
+
+
+asmlinkage int sys_commit_geap(void)
+{
+	return commit_geap_data();
+}
+
+asmlinkage int sys_push_geap(void)
+{
+	return push_geap_data();
+}
+
+asmlinkage int sys_pull_geap(void)
+{
+	return pull_data_and_bss();
+}
+
+asmlinkage int sys_rollback_geap(void)
+{
+	return rollback_data_and_bss();
 }
 
 
