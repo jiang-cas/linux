@@ -4356,8 +4356,8 @@ static int commit_data_and_bss(struct mm_struct *mm1, struct mm_struct *mm2)
 	if(start == mm2->start_data && end == mm2->start_brk) {
 		unsigned long addr;
 		for(addr=start;addr<end;addr+=PAGE_SIZE) {
-			pgd_t *pgd; pud_t *pud; pmd_t *pmd; pte_t *pte;
-			pte_t *pte1, *pte2;
+			pgd_t *pgd=NULL; pud_t *pud=NULL; pmd_t *pmd=NULL; pte_t *pte=NULL;
+			pte_t *pte1=NULL, *pte2=NULL;
 			pgd = pgd_offset(mm1, addr);
 			if(!pgd_none(*pgd))
 				pud = pud_offset(pgd, addr);
@@ -4424,8 +4424,8 @@ static int push_data_and_bss(struct mm_struct *mm1, struct mm_struct *mm2, struc
 	if(start == mm2->start_data && end == mm2->start_brk) {
 		unsigned long addr;
 		for(addr=start;addr<end;addr+=PAGE_SIZE) {
-			pgd_t *pgd; pud_t *pud; pmd_t *pmd; pte_t *pte;
-			pte_t *pte1, *pte2;
+			pgd_t *pgd=NULL; pud_t *pud=NULL; pmd_t *pmd=NULL; pte_t *pte=NULL;
+			pte_t *pte1=NULL, *pte2=NULL;
 			pgd = pgd_offset(mm1, addr);
 			if(!pgd_none(*pgd))
 				pud = pud_offset(pgd, addr);
@@ -4459,7 +4459,7 @@ static int push_data_and_bss(struct mm_struct *mm1, struct mm_struct *mm2, struc
 				v2 = kmap_atomic(page2);
 				v3 = kmap_atomic(page3);
 
-				src = v1; dst = v3;
+				src = v1; dst = v3; changed = v2;
 
 				for(i=0;i<PAGE_SIZE;i++) {
 
@@ -4494,8 +4494,8 @@ static int copy_pte_of_data(struct mm_struct *mm1, struct mm_struct *mm2)
 	if(start == mm2->start_data && end == mm2->start_brk) {
 		unsigned long addr;
 		for(addr=start;addr<end;addr+=PAGE_SIZE) {
-			pgd_t *pgd; pud_t *pud; pmd_t *pmd; pte_t *pte;
-			pte_t *pte1, *pte2;
+			pgd_t *pgd=NULL; pud_t *pud=NULL; pmd_t *pmd=NULL; pte_t *pte=NULL;
+			pte_t *pte1=NULL, *pte2=NULL;
 			pgd = pgd_offset(mm1, addr);
 			if(!pgd_none(*pgd))
 				pud = pud_offset(pgd, addr);
@@ -4536,13 +4536,15 @@ static int copy_pte_of_data(struct mm_struct *mm1, struct mm_struct *mm2)
 
 static int rollback_data_and_bss(void)
 {
-	copy_pte_of_data(current->backup_mm, current->mm);
+	return copy_pte_of_data(current->backup_mm, current->mm);
 }
 
 static int pull_data_and_bss(void)
 {
-	copy_pte_of_data(current->shared_mm, current->mm);
-	copy_pte_of_data(current->shared_mm, current->backup_mm);
+	int a1 = copy_pte_of_data(current->shared_mm, current->mm);
+	int a2 = copy_pte_of_data(current->shared_mm, current->backup_mm);
+	if(!(a1 || a2))return 0;
+	return -1;
 }
 
 
