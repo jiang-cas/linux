@@ -4300,7 +4300,7 @@ void copy_user_huge_page(struct page *dst, struct page *src,
 /* added by peng jiang */
 
 /* back up mm_struct of current process */
-static int backup_mm(struct mm_struct *destmm)
+static int backup_mm(struct mm_struct **destmm)
 {
 	struct mm_struct *mm;
 
@@ -4308,15 +4308,15 @@ static int backup_mm(struct mm_struct *destmm)
 	if(!mm) {
 		return -1;
 	} else {
-		destmm = mm;
+		*destmm = mm;
 	}
 	return 0;
 }
 
 static int init_self_mm(void)
 {
-	int a1 = backup_mm(current->backup_mm);
-	int a2 = backup_mm(current->shared_mm);
+	int a1 = backup_mm(&(current->backup_mm));
+	int a2 = backup_mm(&(current->shared_mm));
 	if(!(a1 || a2))return 0;
 	return -1;
 }
@@ -4328,7 +4328,7 @@ asmlinkage int sys_init_geap(void)
 
 static int clone_backup_mm(void) 
 {
-	if(current->parent->backup_mm && current->parent->shared_mm && !backup_mm(current->backup_mm)) {
+	if(current->parent->backup_mm && current->parent->shared_mm && !backup_mm(&(current->backup_mm))) {
 		current->shared_mm = current->parent->shared_mm;
 		return 0;
 	} else {
@@ -4346,30 +4346,33 @@ asmlinkage int sys_clone_geap(void)
 */
 static int copy_pte_of_data(struct mm_struct *mm1, struct mm_struct *mm2)
 {
-	unsigned long start = mm1->start_data;
-	unsigned long end = mm1->start_brk;
+	unsigned long start;
+	unsigned long end;
+	start = mm1->start_data;
+	end = mm1->start_brk;
 	if(start == mm2->start_data && end == mm2->start_brk) {
 		unsigned long addr;
 		for(addr=start;addr<end;addr+=PAGE_SIZE) {
 			pgd_t *pgd=NULL; pud_t *pud=NULL; pmd_t *pmd=NULL; pte_t *pte=NULL;
 			pte_t *pte1=NULL, *pte2=NULL;
+			printk("addr %ld\n", addr);
 			pgd = pgd_offset(mm1, addr);
-			if(!pgd_none(*pgd))
+			if(pgd && !pgd_none(*pgd))
 				pud = pud_offset(pgd, addr);
-				if(!pud_none(*pud))
+				if(pud && !pud_none(*pud))
 					pmd = pmd_offset(pud, addr);
-					if(!pmd_none(*pmd))
+					if(pmd && !pmd_none(*pmd))
 						pte = pte_offset_map(pmd, addr);
-						if(!pte_none(*pte))
+						if(pte && !pte_none(*pte))
 							pte1 = pte;
 			pgd = pgd_offset(mm2, addr);
-			if(!pgd_none(*pgd))
+			if(pgd && !pgd_none(*pgd))
 				pud = pud_offset(pgd, addr);
-				if(!pud_none(*pud))
+				if(pud && !pud_none(*pud))
 					pmd = pmd_offset(pud, addr);
-					if(!pmd_none(*pmd))
+					if(pmd && !pmd_none(*pmd))
 						pte = pte_offset_map(pmd, addr);
-						if(!pte_none(*pte))
+						if(pte && !pte_none(*pte))
 							pte2 = pte;
 
 			if(pte1 && pte2 && !pte_same(*pte1, *pte2)) {
@@ -4409,22 +4412,22 @@ static int commit_data_and_bss(struct mm_struct *mm1, struct mm_struct *mm2)
 			pgd_t *pgd=NULL; pud_t *pud=NULL; pmd_t *pmd=NULL; pte_t *pte=NULL;
 			pte_t *pte1=NULL, *pte2=NULL;
 			pgd = pgd_offset(mm1, addr);
-			if(!pgd_none(*pgd))
+			if(pgd && !pgd_none(*pgd))
 				pud = pud_offset(pgd, addr);
-				if(!pud_none(*pud))
+				if(pud && !pud_none(*pud))
 					pmd = pmd_offset(pud, addr);
-					if(!pmd_none(*pmd))
+					if(pmd && !pmd_none(*pmd))
 						pte = pte_offset_map(pmd, addr);
-						if(!pte_none(*pte))
+						if(pte && !pte_none(*pte))
 							pte1 = pte;
 			pgd = pgd_offset(mm2, addr);
-			if(!pgd_none(*pgd))
+			if(pgd && !pgd_none(*pgd))
 				pud = pud_offset(pgd, addr);
-				if(!pud_none(*pud))
+				if(pud && !pud_none(*pud))
 					pmd = pmd_offset(pud, addr);
-					if(!pmd_none(*pmd))
+					if(pmd && !pmd_none(*pmd))
 						pte = pte_offset_map(pmd, addr);
-						if(!pte_none(*pte))
+						if(pte && !pte_none(*pte))
 							pte2 = pte;
 
 			if(pte1 && pte2 && !pte_same(*pte1, *pte2)) {
@@ -4477,22 +4480,22 @@ static int push_data_and_bss(struct mm_struct *mm1, struct mm_struct *mm2, struc
 			pgd_t *pgd=NULL; pud_t *pud=NULL; pmd_t *pmd=NULL; pte_t *pte=NULL;
 			pte_t *pte1=NULL, *pte2=NULL;
 			pgd = pgd_offset(mm1, addr);
-			if(!pgd_none(*pgd))
+			if(pgd && !pgd_none(*pgd))
 				pud = pud_offset(pgd, addr);
-				if(!pud_none(*pud))
+				if(pud &&!pud_none(*pud))
 					pmd = pmd_offset(pud, addr);
-					if(!pmd_none(*pmd))
+					if(pmd && !pmd_none(*pmd))
 						pte = pte_offset_map(pmd, addr);
-						if(!pte_none(*pte))
+						if(pte && !pte_none(*pte))
 							pte1 = pte;
 			pgd = pgd_offset(mm2, addr);
-			if(!pgd_none(*pgd))
+			if(pgd && !pgd_none(*pgd))
 				pud = pud_offset(pgd, addr);
-				if(!pud_none(*pud))
+				if(pud && !pud_none(*pud))
 					pmd = pmd_offset(pud, addr);
-					if(!pmd_none(*pmd))
+					if(pmd && !pmd_none(*pmd))
 						pte = pte_offset_map(pmd, addr);
-						if(!pte_none(*pte))
+						if(pte && !pte_none(*pte))
 							pte2 = pte;
 
 			if(pte1 && pte2 && !pte_same(*pte1, *pte2)) {
