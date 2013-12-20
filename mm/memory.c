@@ -4374,19 +4374,22 @@ static int copy_pte_of_data(struct mm_struct *mm1, struct mm_struct *mm2)
 						if(pte && !pte_none(*pte))
 							pte2 = pte;
 
-			if(pte1 && pte2 && !pte_same(*pte1, *pte2)) {
-				struct page *page;
+			if(pte1 && pte2) {
+				struct page *page1, *page2;
 				struct vm_area_struct *vma;
-				unsigned long pa = addr & PAGE_MASK;
-				get_user_pages(current, mm2, pa, 1, 0, 0, &page, NULL);
-				vma = find_vma(mm2, addr);
-				pte_free(mm2, page);
-				set_pte(pte2, *pte1);
-				sync_mm_rss(mm2);
-				pte_unmap(pte1);
-				pte_unmap(pte2);
-				page_add_anon_rmap(page, vma, addr);
-				flush_tlb_page(vma, addr);
+				
+				page1 = pte_page(*pte1);
+				page2 = pte_page(*pte2);
+
+				if(page1 != page2) {
+					vma = find_vma(mm2, addr);
+					pte_free(mm2, page2);
+					set_pte(pte2, *pte1);
+					pte_unmap(pte1);
+					pte_unmap(pte2);
+					page_add_anon_rmap(page2, vma, addr);
+					flush_tlb_page(vma, addr);
+				}
 			}
 		}
 		return 0;
@@ -4430,26 +4433,30 @@ static int commit_data_and_bss(struct mm_struct *mm1, struct mm_struct *mm2)
 						if(pte && !pte_none(*pte))
 							pte2 = pte;
 
-			if(pte1 && pte2 && !pte_same(*pte1, *pte2)) {
+			if(pte1 && pte2) {
 				struct page *page1, *page2;
-				void *v1, *v2;
-				unsigned long pa = addr & PAGE_MASK;
-				int i;
-				const char *src;
-				char *dst;
-				get_user_pages(current, mm1, pa, 1, 0, 0, &page1, NULL);
-				get_user_pages(current, mm2, pa, 1, 0, 0, &page2, NULL);
-				v1 = kmap_atomic(page1);
-				v2 = kmap_atomic(page2);
-				src = v1; dst = v2;
-				for(i=0;i<PAGE_SIZE;i++) {
-					if(src[i] != dst[i])
-						dst[i] = 1;
-					else
-						dst[i] = 0;
+				page1 = pte_page(*pte1);
+				page2 = pte_page(*pte2);
+				
+				if(page1 != page2) {
+					void *v1, *v2;
+					int i;
+					const char *src;
+					char *dst;
+					printk(KERN_INFO "page1 %p, page2 %p \n", page1, page2);
+					v1 = kmap_atomic(page1);
+					v2 = kmap_atomic(page2);
+					printk(KERN_INFO "v1 %p, v2 %p \n", v1, v2);
+					src = v1; dst = v2;
+					for(i=0;i<PAGE_SIZE;i++) {
+						if(src[i] != dst[i])
+							dst[i] = 1;
+						else
+							dst[i] = 0;
+					}
+					kunmap_atomic(v1);
+					kunmap_atomic(v2);
 				}
-				kunmap_atomic(v1);
-				kunmap_atomic(v2);
 			}
 		}
 		return 0;
