@@ -4355,7 +4355,6 @@ static int copy_pte_of_data(struct mm_struct *mm1, struct mm_struct *mm2)
 		for(addr=start;addr<end;addr+=PAGE_SIZE) {
 			pgd_t *pgd=NULL; pud_t *pud=NULL; pmd_t *pmd=NULL; pte_t *pte=NULL;
 			pte_t *pte1=NULL, *pte2=NULL;
-			printk("addr %ld\n", addr);
 			pgd = pgd_offset(mm1, addr);
 			if(pgd && !pgd_none(*pgd))
 				pud = pud_offset(pgd, addr);
@@ -4383,6 +4382,7 @@ static int copy_pte_of_data(struct mm_struct *mm1, struct mm_struct *mm2)
 				vma = find_vma(mm2, addr);
 				pte_free(mm2, page);
 				set_pte(pte2, *pte1);
+				sync_mm_rss(mm2);
 				pte_unmap(pte1);
 				pte_unmap(pte2);
 				page_add_anon_rmap(page, vma, addr);
