@@ -4317,6 +4317,7 @@ static int init_self_mm(void)
 {
 	int a1 = backup_mm(&(current->backup_mm));
 	int a2 = backup_mm(&(current->shared_mm));
+	printk(KERN_INFO "backup_mm %p   shared_mm %p\n", current->backup_mm, current->shared_mm);
 	if(!(a1 || a2))return 0;
 	return -1;
 }
@@ -4328,8 +4329,13 @@ asmlinkage int sys_init_geap(void)
 
 static int clone_backup_mm(void) 
 {
-	if(current->parent->backup_mm && current->parent->shared_mm && !backup_mm(&(current->backup_mm))) {
-		current->shared_mm = current->parent->shared_mm;
+	printk(KERN_INFO "in clone \n");
+	printk(KERN_INFO "ppid %ld\n", get_task_parent(current)->pid);
+	
+	if(current->real_parent->backup_mm && current->real_parent->shared_mm) {
+		int res = backup_mm(&current->backup_mm);
+		printk(KERN_INFO "clone res %d\n", res);
+		current->shared_mm = current->real_parent->shared_mm;
 		return 0;
 	} else {
 		return -1;
@@ -4443,10 +4449,10 @@ static int commit_data_and_bss(struct mm_struct *mm1, struct mm_struct *mm2)
 					int i;
 					const char *src;
 					char *dst;
-					printk(KERN_INFO "page1 %p, page2 %p \n", page1, page2);
+//					printk(KERN_INFO "page1 %p, page2 %p \n", page1, page2);
 					v1 = kmap_atomic(page1);
 					v2 = kmap_atomic(page2);
-					printk(KERN_INFO "v1 %p, v2 %p \n", v1, v2);
+//					printk(KERN_INFO "v1 %p, v2 %p \n", v1, v2);
 					src = v1; dst = v2;
 					for(i=0;i<PAGE_SIZE;i++) {
 						if(src[i] != dst[i])
@@ -4552,8 +4558,12 @@ static int rollback_data_and_bss(void)
 
 static int pull_data_and_bss(void)
 {
-	int a1 = copy_pte_of_data(current, current, current->shared_mm, current->mm);
-	int a2 = copy_pte_of_data(current, current, current->shared_mm, current->backup_mm);
+	int a1, a2;
+	printk(KERN_INFO "pull 1\n");
+	a1 = copy_pte_of_data(current->real_parent, current, current->shared_mm, current->mm);
+	printk(KERN_INFO "pull 2\n");
+	a2 = copy_pte_of_data(current->real_parent, current, current->shared_mm, current->backup_mm);
+	printk(KERN_INFO "pull 3\n");
 	if(!(a1 || a2))return 0;
 	return -1;
 }
