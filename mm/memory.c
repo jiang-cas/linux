@@ -4344,7 +4344,7 @@ asmlinkage int sys_clone_geap(void)
 /*
 	copy pte of data and bss segment from mm1 to mm2
 */
-static int copy_pte_of_data(struct mm_struct *mm1, struct mm_struct *mm2)
+static int copy_pte_of_data(struct task_struct *tsk1, struct task_struct *tsk2, struct mm_struct *mm1, struct mm_struct *mm2)
 {
 	unsigned long start;
 	unsigned long end;
@@ -4377,9 +4377,9 @@ static int copy_pte_of_data(struct mm_struct *mm1, struct mm_struct *mm2)
 			if(pte1 && pte2) {
 				struct page *page1, *page2;
 				struct vm_area_struct *vma;
-				
-				page1 = pte_page(*pte1);
-				page2 = pte_page(*pte2);
+				unsigned long pa = addr & PAGE_MASK;
+				get_user_pages(tsk1, mm1, pa, 1, 0, 0, &page1, NULL);
+				get_user_pages(tsk2, mm2, pa, 1, 0, 0, &page2, NULL);
 
 				if(page1 != page2) {
 					vma = find_vma(mm2, addr);
@@ -4387,7 +4387,7 @@ static int copy_pte_of_data(struct mm_struct *mm1, struct mm_struct *mm2)
 					set_pte(pte2, *pte1);
 					pte_unmap(pte1);
 					pte_unmap(pte2);
-					page_add_anon_rmap(page2, vma, addr);
+					page_add_anon_rmap(page1, vma, addr);
 					flush_tlb_page(vma, addr);
 				}
 			}
@@ -4534,7 +4534,7 @@ static int push_data_and_bss(struct mm_struct *mm1, struct mm_struct *mm2, struc
 
 			}
 		}
-		copy_pte_of_data(current->mm, current->backup_mm);
+		copy_pte_of_data(current, current, current->mm, current->backup_mm);
 		return 0;
 	}
 	return -1;
@@ -4547,13 +4547,13 @@ static int push_geap_data(void)
 
 static int rollback_data_and_bss(void)
 {
-	return copy_pte_of_data(current->backup_mm, current->mm);
+	return copy_pte_of_data(current, current, current->backup_mm, current->mm);
 }
 
 static int pull_data_and_bss(void)
 {
-	int a1 = copy_pte_of_data(current->shared_mm, current->mm);
-	int a2 = copy_pte_of_data(current->shared_mm, current->backup_mm);
+	int a1 = copy_pte_of_data(current, current, current->shared_mm, current->mm);
+	int a2 = copy_pte_of_data(current, current, current->shared_mm, current->backup_mm);
 	if(!(a1 || a2))return 0;
 	return -1;
 }
