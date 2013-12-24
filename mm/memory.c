@@ -4299,44 +4299,50 @@ void copy_user_huge_page(struct page *dst, struct page *src,
 
 /* added by peng jiang */
 
-/* back up mm_struct of current process */
-static int backup_mm(struct mm_struct **destmm)
+/* 
+	create a copy of backup_mm
+	create a copy of shared_mm
+	if succeed return 0; otherwise return -1
+*/
+static int init_geap(void)
 {
 	struct mm_struct *mm;
-
 	mm = dup_mm(current);
-	if(!mm) {
-		return -1;
-	} else {
-		*destmm = mm;
+	if(mm) {
+		current->backup_mm = mm;
+		mm = dup_mm(current);
+		if(mm) {
+			current->shared_mm = mm;
+				return 0;
+		} else {
+			return -1;
+		}
 	}
-	return 0;
-}
-
-static int init_self_mm(void)
-{
-	int a1 = backup_mm(&(current->backup_mm));
-	int a2 = backup_mm(&(current->shared_mm));
-	printk(KERN_INFO "backup_mm %p   shared_mm %p\n", current->backup_mm, current->shared_mm);
-	if(!(a1 || a2))return 0;
 	return -1;
 }
 
 asmlinkage int sys_init_geap(void)
 {
-	return init_self_mm();
+	return init_geap();
 }
 
-static int clone_backup_mm(void) 
+/* 
+	create a copy of backup_mm
+	point current shared_mm to the main process
+	if succeed return 0; otherwise return -1
+*/
+static int clone_geap(void) 
 {
-	printk(KERN_INFO "in clone \n");
-	printk(KERN_INFO "ppid %ld\n", get_task_parent(current)->pid);
-	
 	if(current->real_parent->backup_mm && current->real_parent->shared_mm) {
-		int res = backup_mm(&current->backup_mm);
-		printk(KERN_INFO "clone res %d\n", res);
-		current->shared_mm = current->real_parent->shared_mm;
-		return 0;
+		struct mm_struct *mm;
+		mm = dup_mm(current);
+		if(mm) {
+			current->backup_mm = mm;
+			current->shared_mm = current->real_parent->shared_mm;
+			return 0;
+		} else {
+			return -1;
+		}
 	} else {
 		return -1;
 	}
@@ -4344,13 +4350,13 @@ static int clone_backup_mm(void)
 
 asmlinkage int sys_clone_geap(void) 
 {
-	return clone_backup_mm();
+	return clone_geap();
 }
 
 /*
-	copy pte of data and bss segment from mm1 to mm2
+	copy pte of data and bss segment from srcmm to dstmm
 */
-static int copy_pte_of_data(struct task_struct *tsk1, struct task_struct *tsk2, struct mm_struct *mm1, struct mm_struct *mm2)
+static int copy_pte_of_data(struct mm_struct *mm1, struct mm_struct *mm2)
 {
 	unsigned long start;
 	unsigned long end;
@@ -4382,21 +4388,24 @@ static int copy_pte_of_data(struct task_struct *tsk1, struct task_struct *tsk2, 
 
 			if(pte1 && pte2) {
 				struct page *page1, *page2;
-				struct vm_area_struct *vma;
 				unsigned long pa = addr & PAGE_MASK;
-				get_user_pages(tsk1, mm1, pa, 1, 0, 0, &page1, NULL);
-				get_user_pages(tsk2, mm2, pa, 1, 0, 0, &page2, NULL);
+				get_user_pages(mm1->owner, mm1, pa, 1, 0, 0, &page1, NULL);
+				get_user_pages(mm2->owner, mm2, pa, 1, 0, 0, &page2, NULL);
 
 				if(page1 != page2) {
+					struct vm_area_struct *vma;
+					spin_lock(&mm2->page_table_lock);
 					vma = find_vma(mm2, addr);
 					pte_free(mm2, page2);
 					set_pte(pte2, *pte1);
-					pte_unmap(pte1);
-					pte_unmap(pte2);
 					page_add_anon_rmap(page1, vma, addr);
 					flush_tlb_page(vma, addr);
+					spin_unlock(&mm2->page_table_lock);
 				}
+
 			}
+			pte_unmap(pte1);
+			pte_unmap(pte2);
 		}
 		return 0;
 	}
@@ -4540,7 +4549,7 @@ static int push_data_and_bss(struct mm_struct *mm1, struct mm_struct *mm2, struc
 
 			}
 		}
-		copy_pte_of_data(current, current, current->mm, current->backup_mm);
+		copy_pte_of_data(current->mm, current->backup_mm);
 		return 0;
 	}
 	return -1;
@@ -4553,18 +4562,19 @@ static int push_geap_data(void)
 
 static int rollback_data_and_bss(void)
 {
-	return copy_pte_of_data(current, current, current->backup_mm, current->mm);
+	return copy_pte_of_data(current->backup_mm, current->mm);
 }
 
 static int pull_data_and_bss(void)
 {
 	int a1, a2;
 	printk(KERN_INFO "pull 1\n");
-	a1 = copy_pte_of_data(current->real_parent, current, current->shared_mm, current->mm);
+	a1 = copy_pte_of_data(current->shared_mm, current->backup_mm);
 	printk(KERN_INFO "pull 2\n");
-	a2 = copy_pte_of_data(current->real_parent, current, current->shared_mm, current->backup_mm);
+	a2 = copy_pte_of_data(current->backup_mm, current->mm);
 	printk(KERN_INFO "pull 3\n");
 	if(!(a1 || a2))return 0;
+	printk(KERN_INFO "pull 4\n");
 	return -1;
 }
 
