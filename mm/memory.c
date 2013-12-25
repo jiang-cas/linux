@@ -4420,8 +4420,10 @@ static int copy_pte_of_data(struct mm_struct *mm1, struct mm_struct *mm2)
 	mm1 : mm
 	mm2 : backup_mm
 */
-static int commit_data_and_bss(struct mm_struct *mm1, struct mm_struct *mm2)
+static int commit_data_and_bss(void)
 {
+	struct mm_struct *mm1 = current->mm;
+	struct mm_struct *mm2 = current->backup_mm;
 	unsigned long start = mm1->start_data;
 	unsigned long end = mm1->start_brk;
 	if(start == mm2->start_data && end == mm2->start_brk) {
@@ -4450,28 +4452,24 @@ static int commit_data_and_bss(struct mm_struct *mm1, struct mm_struct *mm2)
 
 			if(pte1 && pte2) {
 				struct page *page1, *page2;
+				void *v1, *v2;
+				int i;
+				const char *src;
+				char *dst;
 				page1 = pte_page(*pte1);
-				page2 = pte_page(*pte2);
+				page2 = alloc_page(GFP_HIGHUSER);
 				
-				if(page1 != page2) {
-					void *v1, *v2;
-					int i;
-					const char *src;
-					char *dst;
-//					printk(KERN_INFO "page1 %p, page2 %p \n", page1, page2);
-					v1 = kmap_atomic(page1);
-					v2 = kmap_atomic(page2);
-//					printk(KERN_INFO "v1 %p, v2 %p \n", v1, v2);
-					src = v1; dst = v2;
-					for(i=0;i<PAGE_SIZE;i++) {
-						if(src[i] != dst[i])
-							dst[i] = 1;
-						else
-							dst[i] = 0;
-					}
-					kunmap_atomic(v1);
-					kunmap_atomic(v2);
+				v1 = kmap_atomic(page1);
+				v2 = kmap_atomic(page2);
+				src = v1; dst = v2;
+				for(i=0;i<PAGE_SIZE;i++) {
+					if(src[i] != dst[i])
+						dst[i] = 1;
+					else
+						dst[i] = 0;
 				}
+				kunmap_atomic(v1);
+				kunmap_atomic(v2);
 			}
 		}
 		return 0;
@@ -4481,7 +4479,7 @@ static int commit_data_and_bss(struct mm_struct *mm1, struct mm_struct *mm2)
 
 static int commit_geap_data(void)
 {
-	return commit_data_and_bss(current->mm, current->backup_mm);
+	return commit_data_and_bss();
 }
 
 /*
