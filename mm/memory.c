@@ -4396,7 +4396,7 @@ static int copy_pte_of_data(struct mm_struct *mm1, struct mm_struct *mm2)
 					struct vm_area_struct *vma;
 					spin_lock(&mm2->page_table_lock);
 					vma = find_vma(mm2, addr);
-					pte_free(mm2, page2);
+				//	pte_free(mm2, page2);
 					set_pte(pte2, *pte1);
 					page_add_anon_rmap(page1, vma, addr);
 					flush_tlb_page(vma, addr);
@@ -4456,8 +4456,11 @@ static int commit_data_and_bss(void)
 				int i;
 				const char *src;
 				char *dst;
+				struct vm_area_struct *vma;
+				pte_t entry;
 				page1 = pte_page(*pte1);
 				page2 = alloc_page(GFP_HIGHUSER);
+				vma = find_vma(mm2, addr);
 				
 				v1 = kmap_atomic(page1);
 				v2 = kmap_atomic(page2);
@@ -4470,6 +4473,14 @@ static int commit_data_and_bss(void)
 				}
 				kunmap_atomic(v1);
 				kunmap_atomic(v2);
+
+				spin_lock(&mm2->page_table_lock);
+				entry = maybe_mkwrite(pte_mkdirty(mk_pte(page2, vma->vm_page_prot)), vma);
+				set_pte(pte2, entry);
+				flush_tlb_page(vma, addr);
+				lru_cache_add(page2);
+				pte_unmap(pte2);
+				spin_unlock(&mm2->page_table_lock);
 			}
 		}
 		return 0;
@@ -4498,33 +4509,43 @@ static int push_data_and_bss(struct mm_struct *mm1, struct mm_struct *mm2, struc
 		unsigned long addr;
 		for(addr=start;addr<end;addr+=PAGE_SIZE) {
 			pgd_t *pgd=NULL; pud_t *pud=NULL; pmd_t *pmd=NULL; pte_t *pte=NULL;
-			pte_t *pte1=NULL, *pte2=NULL;
+			pte_t *pte1=NULL, *pte2=NULL, *pte3=NULL;
 			pgd = pgd_offset(mm1, addr);
 			if(pgd && !pgd_none(*pgd))
 				pud = pud_offset(pgd, addr);
-				if(pud &&!pud_none(*pud))
-					pmd = pmd_offset(pud, addr);
-					if(pmd && !pmd_none(*pmd))
-						pte = pte_offset_map(pmd, addr);
-						if(pte && !pte_none(*pte))
-							pte1 = pte;
+			if(pud &&!pud_none(*pud))
+				pmd = pmd_offset(pud, addr);
+			if(pmd && !pmd_none(*pmd))
+				pte = pte_offset_map(pmd, addr);
+			if(pte && !pte_none(*pte))
+				pte1 = pte;
 			pgd = pgd_offset(mm2, addr);
 			if(pgd && !pgd_none(*pgd))
 				pud = pud_offset(pgd, addr);
-				if(pud && !pud_none(*pud))
-					pmd = pmd_offset(pud, addr);
-					if(pmd && !pmd_none(*pmd))
-						pte = pte_offset_map(pmd, addr);
-						if(pte && !pte_none(*pte))
-							pte2 = pte;
+			if(pud && !pud_none(*pud))
+				pmd = pmd_offset(pud, addr);
+			if(pmd && !pmd_none(*pmd))
+				pte = pte_offset_map(pmd, addr);
+			if(pte && !pte_none(*pte))
+				pte2 = pte;
+			pgd = pgd_offset(mm3, addr);
+			if(pgd && !pgd_none(*pgd))
+				pud = pud_offset(pgd, addr);
+			if(pud && !pud_none(*pud))
+				pmd = pmd_offset(pud, addr);
+			if(pmd && !pmd_none(*pmd))
+				pte = pte_offset_map(pmd, addr);
+			if(pte && !pte_none(*pte))
+				pte3 = pte;
 
-			if(pte1 && pte2 && !pte_same(*pte1, *pte2)) {
+			if(pte1 && pte2 && pte3 && !pte_same(*pte1, *pte2)) {
 				struct page *page1, *page2, *page3;
 				char *v1, *v2, *v3;
 				unsigned long pa = addr & PAGE_MASK;
 				int i;
 				const char *src;
 				char *dst, *changed;
+
 				get_user_pages(current, mm1, pa, 1, 0, 0, &page1, NULL);
 				get_user_pages(current, mm2, pa, 1, 0, 0, &page2, NULL);
 				get_user_pages(current, mm3, pa, 1, 0, 0, &page3, NULL);
@@ -4544,7 +4565,6 @@ static int push_data_and_bss(struct mm_struct *mm1, struct mm_struct *mm2, struc
 				kunmap_atomic(v1);
 				kunmap_atomic(v2);
 				kunmap_atomic(v3);
-
 			}
 		}
 		copy_pte_of_data(current->mm, current->backup_mm);
