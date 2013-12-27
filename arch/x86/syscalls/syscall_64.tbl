@@ -328,6 +328,7 @@
 317 common push_geap sys_push_geap
 318 common pull_geap sys_pull_geap
 319 common rollback_geap sys_rollback_geap
+320 common set_geap_flag sys_set_geap_flag
 
 #
 # x32-specific system call numbers start at 512 to avoid cache impact

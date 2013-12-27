@@ -1046,6 +1046,7 @@ struct copied_pte {
 };
 
 struct task_struct {
+	int isgeap;
 	volatile long state;	/* -1 unrunnable, 0 runnable, >0 stopped */
 	void *stack;
 	atomic_t usage;

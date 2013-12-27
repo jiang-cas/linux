@@ -4323,6 +4323,7 @@ static int init_geap(void)
 
 asmlinkage int sys_init_geap(void)
 {
+	if(current->isgeap!=1)return -1;
 	return init_geap();
 }
 
@@ -4338,6 +4339,7 @@ static int clone_geap(void)
 		mm = dup_mm(current);
 		if(mm) {
 			current->backup_mm = mm;
+			atomic_inc(&current->real_parent->shared_mm->mm_users);
 			current->shared_mm = current->real_parent->shared_mm;
 			return 0;
 		} else {
@@ -4350,6 +4352,7 @@ static int clone_geap(void)
 
 asmlinkage int sys_clone_geap(void) 
 {
+	if(current->isgeap!=1)return -1;
 	return clone_geap();
 }
 
@@ -4401,6 +4404,7 @@ static int copy_pte_of_data(struct mm_struct *mm1, struct mm_struct *mm2)
 					page_add_anon_rmap(page1, vma, addr);
 					flush_tlb_page(vma, addr);
 					spin_unlock(&mm2->page_table_lock);
+
 				}
 
 			}
@@ -4599,22 +4603,36 @@ static int pull_data_and_bss(void)
 
 asmlinkage int sys_commit_geap(void)
 {
+	if(current->isgeap!=1)return -1;
 	return commit_geap_data();
 }
 
 asmlinkage int sys_push_geap(void)
 {
+	if(current->isgeap!=1)return -1;
 	return push_geap_data();
 }
 
 asmlinkage int sys_pull_geap(void)
 {
+	if(current->isgeap!=1)return -1;
 	return pull_data_and_bss();
 }
 
 asmlinkage int sys_rollback_geap(void)
 {
+	if(current->isgeap!=1)return -1;
 	return rollback_data_and_bss();
+}
+
+static void set_geap_flag(void)
+{
+	current->isgeap = 1;
+}
+
+asmlinkage void sys_set_geap_flag(void)
+{
+	set_geap_flag();
 }
 
 
