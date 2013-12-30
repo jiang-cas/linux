@@ -4359,13 +4359,8 @@ asmlinkage int sys_clone_geap(void)
 /*
 	copy pte of data and bss segment from srcmm to dstmm
 */
-static int copy_pte_of_data(struct mm_struct *mm1, struct mm_struct *mm2)
+static int copy_region_pte(unsigned long start, unsigned long end, struct mm_struct *mm1, struct mm_struct *mm2) 
 {
-	unsigned long start;
-	unsigned long end;
-	start = mm1->start_data;
-	end = mm1->start_brk;
-	if(start == mm2->start_data && end == mm2->start_brk) {
 		unsigned long addr;
 		for(addr=start;addr<end;addr+=PAGE_SIZE) {
 			pgd_t *pgd=NULL; pud_t *pud=NULL; pmd_t *pmd=NULL; pte_t *pte=NULL;
@@ -4412,9 +4407,21 @@ static int copy_pte_of_data(struct mm_struct *mm1, struct mm_struct *mm2)
 			pte_unmap(pte2);
 		}
 		return 0;
+}
+
+static int copy_pte_of_data(struct mm_struct *mm1, struct mm_struct *mm2)
+{
+	unsigned long start;
+	unsigned long end;
+	start = mm1->start_data;
+	end = mm1->start_brk;
+	if(start == mm2->start_data && end == mm2->start_brk) {
+		return copy_region_pte(start, end, mm1, mm2);
 	}
 	return -1;
 }
+
+
 
 /* commit data and bss segment of two address space : from mm1 to mm2
 	return 0 if ok
@@ -4424,13 +4431,13 @@ static int copy_pte_of_data(struct mm_struct *mm1, struct mm_struct *mm2)
 	mm1 : mm
 	mm2 : backup_mm
 */
-static int commit_data_and_bss(void)
+
+
+
+static int commit_region(unsigned long start, unsigned long end)
 {
 	struct mm_struct *mm1 = current->mm;
 	struct mm_struct *mm2 = current->backup_mm;
-	unsigned long start = mm1->start_data;
-	unsigned long end = mm1->start_brk;
-	if(start == mm2->start_data && end == mm2->start_brk) {
 		unsigned long addr;
 		for(addr=start;addr<end;addr+=PAGE_SIZE) {
 			pgd_t *pgd=NULL; pud_t *pud=NULL; pmd_t *pmd=NULL; pte_t *pte=NULL;
@@ -4488,14 +4495,31 @@ static int commit_data_and_bss(void)
 			}
 		}
 		return 0;
+}
+
+static int commit_data_and_bss(void)
+{
+	struct mm_struct *mm1 = current->mm;
+	struct mm_struct *mm2 = current->backup_mm;
+	unsigned long start = mm1->start_data;
+	unsigned long end = mm1->start_brk;
+	if(start == mm2->start_data && end == mm2->start_brk) {
+		return commit_region(start, end);
 	}
 	return -1;
 }
+
 
 static int commit_geap_data(void)
 {
 	return commit_data_and_bss();
 }
+
+static int commit_geap_heap(void)
+{
+	return commit_region(current->mm->start_brk, current->mm->start_brk+128*1024*1024*(current->geapnum));
+}
+
 
 /*
 mm1 : mm
@@ -4505,11 +4529,12 @@ mm3 : shared_mm
 push data from mm to shared_mm
 
 */
-static int push_data_and_bss(struct mm_struct *mm1, struct mm_struct *mm2, struct mm_struct *mm3)
+
+static int push_region(unsigned long start, unsigned long end)
 {
-	unsigned long start = mm1->start_data;
-	unsigned long end = mm1->start_brk;
-	if(start == mm2->start_data && end == mm2->start_brk) {
+	struct mm_struct *mm1 = current->mm;
+	struct mm_struct *mm2 = current->backup_mm;
+	struct mm_struct *mm3 = current->shared_mm;
 		unsigned long addr;
 		for(addr=start;addr<end;addr+=PAGE_SIZE) {
 			pgd_t *pgd=NULL; pud_t *pud=NULL; pmd_t *pmd=NULL; pte_t *pte=NULL;
@@ -4573,13 +4598,28 @@ static int push_data_and_bss(struct mm_struct *mm1, struct mm_struct *mm2, struc
 		}
 		copy_pte_of_data(current->mm, current->backup_mm);
 		return 0;
+}
+
+static int push_data_and_bss(void)
+{
+	struct mm_struct *mm1 = current->mm;
+	struct mm_struct *mm2 = current->backup_mm;
+	unsigned long start = mm1->start_data;
+	unsigned long end = mm1->start_brk;
+	if(start == mm2->start_data && end == mm2->start_brk) {
+		return push_region(start, end);
 	}
 	return -1;
 }
 
+static int push_geap_heap(void)
+{
+	return push_region(current->mm->start_brk, current->mm->start_brk+128*1024*1024*(current->geapnum));
+}
+
 static int push_geap_data(void)
 {
-	return push_data_and_bss(current->mm, current->backup_mm, current->shared_mm);
+	return push_data_and_bss();
 }
 
 static int rollback_data_and_bss(void)
@@ -4587,47 +4627,74 @@ static int rollback_data_and_bss(void)
 	return copy_pte_of_data(current->backup_mm, current->mm);
 }
 
+static int rollback_geap_heap(void)
+{
+	return copy_region_pte(current->mm->start_brk, current->mm->start_brk+128*1024*1024*(current->geapnum), current->backup_mm, current->mm);
+}
+
 static int pull_data_and_bss(void)
 {
 	int a1, a2;
-	printk(KERN_INFO "pull 1\n");
 	a1 = copy_pte_of_data(current->shared_mm, current->backup_mm);
-	printk(KERN_INFO "pull 2\n");
 	a2 = copy_pte_of_data(current->backup_mm, current->mm);
-	printk(KERN_INFO "pull 3\n");
 	if(!(a1 || a2))return 0;
-	printk(KERN_INFO "pull 4\n");
+	return -1;
+}
+
+static int pull_geap_heap(void)
+{
+	int a1, a2;
+	a1 = copy_region_pte(current->mm->start_brk, current->mm->start_brk+128*1024*1024*(current->geapnum), current->shared_mm, current->backup_mm);
+	a2 = copy_region_pte(current->mm->start_brk, current->mm->start_brk+128*1024*1024*(current->geapnum), current->backup_mm, current->mm);
+	if(!(a1 || a2))return 0;
 	return -1;
 }
 
 
 asmlinkage int sys_commit_geap(void)
 {
-	if(current->geapnum!=1)return -1;
-	return commit_geap_data();
+	int a1, a2;
+	if(current->geapnum==0)return -1;
+	a1 = commit_geap_data();
+	a2 = commit_geap_heap();
+	if(!(a1 || a2))return 0;
+	return -1;
 }
 
 asmlinkage int sys_push_geap(void)
 {
-	if(current->geapnum!=1)return -1;
-	return push_geap_data();
+	int a1, a2;
+	if(current->geapnum==0)return -1;
+	a1 = push_geap_data();
+	a2 = push_geap_heap();
+	if(!(a1 || a2))return 0;
+	return -1;
 }
 
 asmlinkage int sys_pull_geap(void)
 {
-	if(current->geapnum!=1)return -1;
-	return pull_data_and_bss();
+	int a1, a2;
+	if(current->geapnum==0)return -1;
+	a1 = pull_data_and_bss();
+	a2 = pull_geap_heap();
+	if(!(a1 || a2))return 0;
+	return -1;
 }
 
 asmlinkage int sys_rollback_geap(void)
 {
-	if(current->geapnum!=1)return -1;
-	return rollback_data_and_bss();
+	int a1, a2;
+	if(current->geapnum==0)return -1;
+	a1 = rollback_data_and_bss();
+	a2 = rollback_geap_heap();
+	if(!(a1 || a2))return 0;
+	return -1;
 }
 
 static void set_geap_flag(void)
 {
 	current->geapnum = 1;
+	current->geaptotal = 1;
 }
 
 asmlinkage void sys_set_geap_flag(void)

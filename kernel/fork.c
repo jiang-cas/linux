@@ -1,4 +1,5 @@
 /*
+	printk(KERN_INFO "geap brk %ld \n", current->mm->brk);
  *  linux/kernel/fork.c
  *
  *  Copyright (C) 1991, 1992  Linus Torvalds
@@ -878,7 +879,7 @@ static int copy_mm(unsigned long clone_flags, struct task_struct *tsk)
 	if (!oldmm)
 		return 0;
 
-	if ((clone_flags & CLONE_VM) && tsk->geapnum != 1) {
+	if ((clone_flags & CLONE_VM) && tsk->geaptotal == 0) {
 			atomic_inc(&oldmm->mm_users);
 			mm = oldmm;
 			goto good_mm;
@@ -893,6 +894,14 @@ static int copy_mm(unsigned long clone_flags, struct task_struct *tsk)
 good_mm:
 	tsk->mm = mm;
 	tsk->active_mm = mm;
+//added by peng jiang
+	if(tsk->geaptotal >= 1) {
+		tsk->mm->start_brk += 128*1024*1024*(tsk->geaptotal);
+		tsk->mm->brk += 128*1024*1024*(tsk->geaptotal);
+		tsk->geaptotal++;
+		current->geaptotal++;
+		tsk->geapnum = tsk->geaptotal;
+	}
 	return 0;
 
 fail_nomem:
