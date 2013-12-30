@@ -856,4 +856,5 @@ asmlinkage int sys_push_geap(void);
 asmlinkage int sys_pull_geap(void);
 asmlinkage int sys_rollback_geap(void);
 asmlinkage void sys_set_geap_flag(void);
+asmlinkage void sys_print_geap_num(void);
 #endif

@@ -878,11 +878,12 @@ static int copy_mm(unsigned long clone_flags, struct task_struct *tsk)
 	if (!oldmm)
 		return 0;
 
-	if ((clone_flags & CLONE_VM) && tsk->isgeap != 1) {
+	if ((clone_flags & CLONE_VM) && tsk->geapnum != 1) {
 			atomic_inc(&oldmm->mm_users);
 			mm = oldmm;
 			goto good_mm;
 	}
+
 
 	retval = -ENOMEM;
 	mm = dup_mm(tsk);

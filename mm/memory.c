@@ -4323,7 +4323,7 @@ static int init_geap(void)
 
 asmlinkage int sys_init_geap(void)
 {
-	if(current->isgeap!=1)return -1;
+	if(current->geapnum!=1)return -1;
 	return init_geap();
 }
 
@@ -4352,7 +4352,7 @@ static int clone_geap(void)
 
 asmlinkage int sys_clone_geap(void) 
 {
-	if(current->isgeap!=1)return -1;
+	if(current->geapnum!=1)return -1;
 	return clone_geap();
 }
 
@@ -4603,36 +4603,50 @@ static int pull_data_and_bss(void)
 
 asmlinkage int sys_commit_geap(void)
 {
-	if(current->isgeap!=1)return -1;
+	if(current->geapnum!=1)return -1;
 	return commit_geap_data();
 }
 
 asmlinkage int sys_push_geap(void)
 {
-	if(current->isgeap!=1)return -1;
+	if(current->geapnum!=1)return -1;
 	return push_geap_data();
 }
 
 asmlinkage int sys_pull_geap(void)
 {
-	if(current->isgeap!=1)return -1;
+	if(current->geapnum!=1)return -1;
 	return pull_data_and_bss();
 }
 
 asmlinkage int sys_rollback_geap(void)
 {
-	if(current->isgeap!=1)return -1;
+	if(current->geapnum!=1)return -1;
 	return rollback_data_and_bss();
 }
 
 static void set_geap_flag(void)
 {
-	current->isgeap = 1;
+	current->geapnum = 1;
 }
 
 asmlinkage void sys_set_geap_flag(void)
 {
 	set_geap_flag();
+}
+
+static void print_geap_num(void)
+{
+	printk(KERN_INFO "geap num %d \n", current->geapnum);
+	printk(KERN_INFO "geap start brk %ld \n", current->mm->start_brk);
+	printk(KERN_INFO "geap brk %ld \n", current->mm->brk);
+	printk(KERN_INFO "geap start stack %ld \n", current->mm->start_stack);
+
+}
+
+asmlinkage void sys_print_geap_num(void)
+{
+	print_geap_num();
 }
 
 
