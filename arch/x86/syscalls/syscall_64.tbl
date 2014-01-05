@@ -322,14 +322,15 @@
 313	common	finit_module		sys_finit_module
 
 #added by peng jiang
-314 common init_geap sys_init_geap
-315 common clone_geap sys_clone_geap
-316 common commit_geap sys_commit_geap
-317 common push_geap sys_push_geap
-318 common pull_geap sys_pull_geap
-319 common rollback_geap sys_rollback_geap
-320 common set_geap_flag sys_set_geap_flag
-321 common print_geap_num sys_print_geap_num
+314 common jp_init_mvspace sys_jp_init_mvspace
+315 common jp_clone_mvspace sys_jp_clone_mvspace
+316 common jp_commit_mvspace sys_jp_commit_mvspace
+317 common jp_push_mvspace sys_jp_push_mvspace
+318 common jp_pull_mvpsace sys_jp_pull_mvspace
+319 common jp_rollback_mvspace sys_jp_rollback_mvspace
+320 common jp_set_mvspace_flag sys_jp_set_mvspace_flag
+321 common jp_print_mvspace_num sys_jp_print_mvspace_num
+322 common jp_commit_region sys_jp_commit_region
 
 #
 # x32-specific system call numbers start at 512 to avoid cache impact

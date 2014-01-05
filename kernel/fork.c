@@ -896,8 +896,6 @@ good_mm:
 	tsk->active_mm = mm;
 //added by peng jiang
 	if(tsk->geaptotal >= 1) {
-		tsk->mm->start_brk += 128*1024*1024*(tsk->geaptotal);
-		tsk->mm->brk += 128*1024*1024*(tsk->geaptotal);
 		tsk->geaptotal++;
 		current->geaptotal++;
 		tsk->geapnum = tsk->geaptotal;

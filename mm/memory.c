@@ -4300,11 +4300,11 @@ void copy_user_huge_page(struct page *dst, struct page *src,
 /* added by peng jiang */
 
 /* 
-	create a copy of backup_mm
-	create a copy of shared_mm
+	create a backup_mm
+	create a shared_mm
 	if succeed return 0; otherwise return -1
 */
-static int init_geap(void)
+static int jp_init_mvspace(void)
 {
 	struct mm_struct *mm;
 	mm = dup_mm(current);
@@ -4321,18 +4321,19 @@ static int init_geap(void)
 	return -1;
 }
 
-asmlinkage int sys_init_geap(void)
+asmlinkage int sys_jp_init_mvspace(void)
 {
+	/* only the main thread can init the mvspace*/
 	if(current->geapnum!=1)return -1;
-	return init_geap();
+	return jp_init_mvspace();
 }
 
 /* 
-	create a copy of backup_mm
+	create a backup_mm
 	point current shared_mm to the main process
 	if succeed return 0; otherwise return -1
 */
-static int clone_geap(void) 
+static int jp_clone_mvspace(void) 
 {
 	if(current->real_parent->backup_mm && current->real_parent->shared_mm) {
 		struct mm_struct *mm;
@@ -4350,73 +4351,74 @@ static int clone_geap(void)
 	}
 }
 
-asmlinkage int sys_clone_geap(void) 
+asmlinkage int sys_jp_clone_mvspace(void) 
 {
-	if(current->geapnum!=1)return -1;
-	return clone_geap();
+	/* only when it is a geap process */
+	if(current->geapnum==0)return -1;
+	return jp_clone_mvspace();
 }
 
 /*
-	copy pte of data and bss segment from srcmm to dstmm
+	copy pte of data and bss segment from srcmm(mm1) to dstmm(mm2)
 */
-static int copy_region_pte(unsigned long start, unsigned long end, struct mm_struct *mm1, struct mm_struct *mm2) 
+static void jp_copy_region_pte(unsigned long start, unsigned long end, struct mm_struct *mm1, struct mm_struct *mm2) 
 {
-		unsigned long addr;
-		for(addr=start;addr<end;addr+=PAGE_SIZE) {
-			pgd_t *pgd=NULL; pud_t *pud=NULL; pmd_t *pmd=NULL; pte_t *pte=NULL;
-			pte_t *pte1=NULL, *pte2=NULL;
-			pgd = pgd_offset(mm1, addr);
-			if(pgd && !pgd_none(*pgd))
-				pud = pud_offset(pgd, addr);
-				if(pud && !pud_none(*pud))
-					pmd = pmd_offset(pud, addr);
-					if(pmd && !pmd_none(*pmd))
-						pte = pte_offset_map(pmd, addr);
-						if(pte && !pte_none(*pte))
-							pte1 = pte;
-			pgd = pgd_offset(mm2, addr);
-			if(pgd && !pgd_none(*pgd))
-				pud = pud_offset(pgd, addr);
-				if(pud && !pud_none(*pud))
-					pmd = pmd_offset(pud, addr);
-					if(pmd && !pmd_none(*pmd))
-						pte = pte_offset_map(pmd, addr);
-						if(pte && !pte_none(*pte))
-							pte2 = pte;
+	unsigned long addr;
+	for(addr=start;addr<end;addr+=PAGE_SIZE) {
+		pgd_t *pgd=NULL; pud_t *pud=NULL; pmd_t *pmd=NULL; pte_t *pte=NULL;
+		pte_t *pte1=NULL, *pte2=NULL;
+		pgd = pgd_offset(mm1, addr);
+		if(pgd && !pgd_none(*pgd))
+			pud = pud_offset(pgd, addr);
+		if(pud && !pud_none(*pud))
+			pmd = pmd_offset(pud, addr);
+		if(pmd && !pmd_none(*pmd))
+			pte = pte_offset_map(pmd, addr);
+		if(pte && !pte_none(*pte))
+			pte1 = pte;
+		pgd = pgd_offset(mm2, addr);
+		if(pgd && !pgd_none(*pgd))
+			pud = pud_offset(pgd, addr);
+		if(pud && !pud_none(*pud))
+			pmd = pmd_offset(pud, addr);
+		if(pmd && !pmd_none(*pmd))
+			pte = pte_offset_map(pmd, addr);
+		if(pte && !pte_none(*pte))
+			pte2 = pte;
 
-			if(pte1 && pte2) {
-				struct page *page1, *page2;
-				unsigned long pa = addr & PAGE_MASK;
-				get_user_pages(mm1->owner, mm1, pa, 1, 0, 0, &page1, NULL);
-				get_user_pages(mm2->owner, mm2, pa, 1, 0, 0, &page2, NULL);
+		if(pte1 && pte2) {
+			struct page *page1, *page2;
+			unsigned long pa = addr & PAGE_MASK;
+			get_user_pages(mm1->owner, mm1, pa, 1, 0, 0, &page1, NULL);
+			get_user_pages(mm2->owner, mm2, pa, 1, 0, 0, &page2, NULL);
 
-				if(page1 != page2) {
-					struct vm_area_struct *vma;
-					spin_lock(&mm2->page_table_lock);
-					vma = find_vma(mm2, addr);
-				//	pte_free(mm2, page2);
-					set_pte(pte2, *pte1);
-					page_add_anon_rmap(page1, vma, addr);
-					flush_tlb_page(vma, addr);
-					spin_unlock(&mm2->page_table_lock);
-
-				}
+			if(page1 != page2) {
+				struct vm_area_struct *vma;
+				spin_lock(&mm2->page_table_lock);
+				vma = find_vma(mm2, addr);
+				pte_free(mm2, page2);
+				set_pte(pte2, *pte1);
+				page_add_anon_rmap(page1, vma, addr);
+				flush_tlb_page(vma, addr);
+				spin_unlock(&mm2->page_table_lock);
 
 			}
-			pte_unmap(pte1);
-			pte_unmap(pte2);
+
 		}
-		return 0;
+		pte_unmap(pte1);
+		pte_unmap(pte2);
+	}
 }
 
-static int copy_pte_of_data(struct mm_struct *mm1, struct mm_struct *mm2)
+static int jp_copy_pte_of_data_and_bss(struct mm_struct *mm1, struct mm_struct *mm2)
 {
 	unsigned long start;
 	unsigned long end;
 	start = mm1->start_data;
 	end = mm1->start_brk;
 	if(start == mm2->start_data && end == mm2->start_brk) {
-		return copy_region_pte(start, end, mm1, mm2);
+		jp_copy_region_pte(start, end, mm1, mm2);
+		return 0;
 	}
 	return -1;
 }
@@ -4424,102 +4426,100 @@ static int copy_pte_of_data(struct mm_struct *mm1, struct mm_struct *mm2)
 
 
 /* commit data and bss segment of two address space : from mm1 to mm2
-	return 0 if ok
-	return -1 if fail
-	if an address has been changed, the byte will be set to 1, or it will be 0
+   return 0 if ok
+   return -1 if fail
+   if an address has been changed, the byte will be set to 1, or it will be 0
 
-	mm1 : mm
-	mm2 : backup_mm
-*/
-
-
-
-static int commit_region(unsigned long start, unsigned long end)
+mm1 : mm
+mm2 : backup_mm
+ */
+static void jp_commit_region(unsigned long start, unsigned long end)
 {
 	struct mm_struct *mm1 = current->mm;
 	struct mm_struct *mm2 = current->backup_mm;
-		unsigned long addr;
-		for(addr=start;addr<end;addr+=PAGE_SIZE) {
-			pgd_t *pgd=NULL; pud_t *pud=NULL; pmd_t *pmd=NULL; pte_t *pte=NULL;
-			pte_t *pte1=NULL, *pte2=NULL;
-			pgd = pgd_offset(mm1, addr);
-			if(pgd && !pgd_none(*pgd))
-				pud = pud_offset(pgd, addr);
-				if(pud && !pud_none(*pud))
-					pmd = pmd_offset(pud, addr);
-					if(pmd && !pmd_none(*pmd))
-						pte = pte_offset_map(pmd, addr);
-						if(pte && !pte_none(*pte))
-							pte1 = pte;
-			pgd = pgd_offset(mm2, addr);
-			if(pgd && !pgd_none(*pgd))
-				pud = pud_offset(pgd, addr);
-				if(pud && !pud_none(*pud))
-					pmd = pmd_offset(pud, addr);
-					if(pmd && !pmd_none(*pmd))
-						pte = pte_offset_map(pmd, addr);
-						if(pte && !pte_none(*pte))
-							pte2 = pte;
+	unsigned long addr;
+	for(addr=start;addr<end;addr+=PAGE_SIZE) {
+		pgd_t *pgd=NULL; pud_t *pud=NULL; pmd_t *pmd=NULL; pte_t *pte=NULL;
+		pte_t *pte1=NULL, *pte2=NULL;
+		pgd = pgd_offset(mm1, addr);
+		if(pgd && !pgd_none(*pgd))
+			pud = pud_offset(pgd, addr);
+		if(pud && !pud_none(*pud))
+			pmd = pmd_offset(pud, addr);
+		if(pmd && !pmd_none(*pmd))
+			pte = pte_offset_map(pmd, addr);
+		if(pte && !pte_none(*pte))
+			pte1 = pte;
+		pgd = pgd_offset(mm2, addr);
+		if(pgd && !pgd_none(*pgd))
+			pud = pud_offset(pgd, addr);
+		if(pud && !pud_none(*pud))
+			pmd = pmd_offset(pud, addr);
+		if(pmd && !pmd_none(*pmd))
+			pte = pte_offset_map(pmd, addr);
+		if(pte && !pte_none(*pte))
+			pte2 = pte;
 
-			if(pte1 && pte2) {
-				struct page *page1, *page2;
-				void *v1, *v2;
-				int i;
-				const char *src;
-				char *dst;
-				struct vm_area_struct *vma;
-				pte_t entry;
-				page1 = pte_page(*pte1);
-				page2 = alloc_page(GFP_HIGHUSER);
-				vma = find_vma(mm2, addr);
-				
-				v1 = kmap_atomic(page1);
-				v2 = kmap_atomic(page2);
-				src = v1; dst = v2;
-				for(i=0;i<PAGE_SIZE;i++) {
-					if(src[i] != dst[i])
-						dst[i] = 1;
-					else
-						dst[i] = 0;
-				}
-				kunmap_atomic(v1);
-				kunmap_atomic(v2);
+		if(pte1 && pte2) {
+			struct page *page1, *page2;
+			void *v1, *v2;
+			int i;
+			const char *src;
+			char *dst;
+			struct vm_area_struct *vma;
+			pte_t entry;
+			page1 = pte_page(*pte1);
+			page2 = alloc_page(GFP_HIGHUSER);
+			vma = find_vma(mm2, addr);
 
-				spin_lock(&mm2->page_table_lock);
-				entry = maybe_mkwrite(pte_mkdirty(mk_pte(page2, vma->vm_page_prot)), vma);
-				set_pte(pte2, entry);
-				flush_tlb_page(vma, addr);
-				lru_cache_add(page2);
-				pte_unmap(pte2);
-				spin_unlock(&mm2->page_table_lock);
+			v1 = kmap_atomic(page1);
+			v2 = kmap_atomic(page2);
+			src = v1; dst = v2;
+			for(i=0;i<PAGE_SIZE;i++) {
+				if(src[i] != dst[i])
+					dst[i] = 1;
+				else
+					dst[i] = 0;
 			}
+			kunmap_atomic(v1);
+			kunmap_atomic(v2);
+
+			spin_lock(&mm2->page_table_lock);
+			entry = maybe_mkwrite(pte_mkdirty(mk_pte(page2, vma->vm_page_prot)), vma);
+			set_pte(pte2, entry);
+			flush_tlb_page(vma, addr);
+			lru_cache_add(page2);
+			pte_unmap(pte2);
+			spin_unlock(&mm2->page_table_lock);
 		}
-		return 0;
+	}
 }
 
-static int commit_data_and_bss(void)
+static int jp_commit_data_and_bss(void)
 {
 	struct mm_struct *mm1 = current->mm;
 	struct mm_struct *mm2 = current->backup_mm;
 	unsigned long start = mm1->start_data;
 	unsigned long end = mm1->start_brk;
 	if(start == mm2->start_data && end == mm2->start_brk) {
-		return commit_region(start, end);
+		jp_commit_region(start, end);
+		return 0;
 	}
 	return -1;
 }
 
-
-static int commit_geap_data(void)
+asmlinkage int sys_jp_commit_mvspace(void)
 {
-	return commit_data_and_bss();
+	if(current->geapnum==0)return -1;
+	return jp_commit_data_and_bss();
 }
 
-static int commit_geap_heap(void)
+asmlinkage int sys_jp_commit_region(unsigned long start, unsigned long end)
 {
-	return commit_region(current->mm->start_brk, current->mm->start_brk+128*1024*1024*(current->geapnum));
+	if(current->geapnum==0)return -1;
+	jp_commit_region(start, end);
+	return 0;
 }
-
 
 /*
 mm1 : mm
@@ -4528,181 +4528,133 @@ mm3 : shared_mm
 
 push data from mm to shared_mm
 
-*/
-
-static int push_region(unsigned long start, unsigned long end)
+ */
+static void jp_push_region(unsigned long start, unsigned long end)
 {
 	struct mm_struct *mm1 = current->mm;
 	struct mm_struct *mm2 = current->backup_mm;
 	struct mm_struct *mm3 = current->shared_mm;
-		unsigned long addr;
-		for(addr=start;addr<end;addr+=PAGE_SIZE) {
-			pgd_t *pgd=NULL; pud_t *pud=NULL; pmd_t *pmd=NULL; pte_t *pte=NULL;
-			pte_t *pte1=NULL, *pte2=NULL, *pte3=NULL;
-			pgd = pgd_offset(mm1, addr);
-			if(pgd && !pgd_none(*pgd))
-				pud = pud_offset(pgd, addr);
-			if(pud &&!pud_none(*pud))
-				pmd = pmd_offset(pud, addr);
-			if(pmd && !pmd_none(*pmd))
-				pte = pte_offset_map(pmd, addr);
-			if(pte && !pte_none(*pte))
-				pte1 = pte;
-			pgd = pgd_offset(mm2, addr);
-			if(pgd && !pgd_none(*pgd))
-				pud = pud_offset(pgd, addr);
-			if(pud && !pud_none(*pud))
-				pmd = pmd_offset(pud, addr);
-			if(pmd && !pmd_none(*pmd))
-				pte = pte_offset_map(pmd, addr);
-			if(pte && !pte_none(*pte))
-				pte2 = pte;
-			pgd = pgd_offset(mm3, addr);
-			if(pgd && !pgd_none(*pgd))
-				pud = pud_offset(pgd, addr);
-			if(pud && !pud_none(*pud))
-				pmd = pmd_offset(pud, addr);
-			if(pmd && !pmd_none(*pmd))
-				pte = pte_offset_map(pmd, addr);
-			if(pte && !pte_none(*pte))
-				pte3 = pte;
+	unsigned long addr;
+	for(addr=start;addr<end;addr+=PAGE_SIZE) {
+		pgd_t *pgd=NULL; pud_t *pud=NULL; pmd_t *pmd=NULL; pte_t *pte=NULL;
+		pte_t *pte1=NULL, *pte2=NULL, *pte3=NULL;
+		pgd = pgd_offset(mm1, addr);
+		if(pgd && !pgd_none(*pgd))
+			pud = pud_offset(pgd, addr);
+		if(pud &&!pud_none(*pud))
+			pmd = pmd_offset(pud, addr);
+		if(pmd && !pmd_none(*pmd))
+			pte = pte_offset_map(pmd, addr);
+		if(pte && !pte_none(*pte))
+			pte1 = pte;
+		pgd = pgd_offset(mm2, addr);
+		if(pgd && !pgd_none(*pgd))
+			pud = pud_offset(pgd, addr);
+		if(pud && !pud_none(*pud))
+			pmd = pmd_offset(pud, addr);
+		if(pmd && !pmd_none(*pmd))
+			pte = pte_offset_map(pmd, addr);
+		if(pte && !pte_none(*pte))
+			pte2 = pte;
+		pgd = pgd_offset(mm3, addr);
+		if(pgd && !pgd_none(*pgd))
+			pud = pud_offset(pgd, addr);
+		if(pud && !pud_none(*pud))
+			pmd = pmd_offset(pud, addr);
+		if(pmd && !pmd_none(*pmd))
+			pte = pte_offset_map(pmd, addr);
+		if(pte && !pte_none(*pte))
+			pte3 = pte;
 
-			if(pte1 && pte2 && pte3 && !pte_same(*pte1, *pte2)) {
-				struct page *page1, *page2, *page3;
-				char *v1, *v2, *v3;
-				unsigned long pa = addr & PAGE_MASK;
-				int i;
-				const char *src;
-				char *dst, *changed;
+		if(pte1 && pte2 && pte3 && !pte_same(*pte1, *pte2)) {
+			struct page *page1, *page2, *page3;
+			char *v1, *v2, *v3;
+			unsigned long pa = addr & PAGE_MASK;
+			int i;
+			const char *src;
+			char *dst, *changed;
 
-				get_user_pages(current, mm1, pa, 1, 0, 0, &page1, NULL);
-				get_user_pages(current, mm2, pa, 1, 0, 0, &page2, NULL);
-				get_user_pages(current, mm3, pa, 1, 0, 0, &page3, NULL);
-				v1 = kmap_atomic(page1);
-				v2 = kmap_atomic(page2);
-				v3 = kmap_atomic(page3);
+			get_user_pages(current, mm1, pa, 1, 0, 0, &page1, NULL);
+			get_user_pages(current, mm2, pa, 1, 0, 0, &page2, NULL);
+			get_user_pages(current, mm3, pa, 1, 0, 0, &page3, NULL);
+			v1 = kmap_atomic(page1);
+			v2 = kmap_atomic(page2);
+			v3 = kmap_atomic(page3);
 
-				src = v1; dst = v3; changed = v2;
+			src = v1; dst = v3; changed = v2;
 
-				for(i=0;i<PAGE_SIZE;i++) {
+			for(i=0;i<PAGE_SIZE;i++) {
 
-					/* v2[i] means this byte has been committed, and thus need to be pushed */
-					if(changed[i]) {
-						dst[i] = src[i];
-					}
+				/* v2[i] means this byte has been committed, and thus need to be pushed */
+				if(changed[i]) {
+					dst[i] = src[i];
 				}
-				kunmap_atomic(v1);
-				kunmap_atomic(v2);
-				kunmap_atomic(v3);
 			}
+			kunmap_atomic(v1);
+			kunmap_atomic(v2);
+			kunmap_atomic(v3);
 		}
-		copy_pte_of_data(current->mm, current->backup_mm);
-		return 0;
+	}
+	jp_copy_pte_of_data_and_bss(current->mm, current->backup_mm);
 }
 
-static int push_data_and_bss(void)
+static int jp_push_data_and_bss(void)
 {
 	struct mm_struct *mm1 = current->mm;
 	struct mm_struct *mm2 = current->backup_mm;
 	unsigned long start = mm1->start_data;
 	unsigned long end = mm1->start_brk;
 	if(start == mm2->start_data && end == mm2->start_brk) {
-		return push_region(start, end);
+		jp_push_region(start, end);
+		return 0;
 	}
 	return -1;
 }
 
-static int push_geap_heap(void)
+asmlinkage int sys_jp_push_mvspace(void)
 {
-	return push_region(current->mm->start_brk, current->mm->start_brk+128*1024*1024*(current->geapnum));
-}
-
-static int push_geap_data(void)
-{
-	return push_data_and_bss();
-}
-
-static int rollback_data_and_bss(void)
-{
-	return copy_pte_of_data(current->backup_mm, current->mm);
-}
-
-static int rollback_geap_heap(void)
-{
-	return copy_region_pte(current->mm->start_brk, current->mm->start_brk+128*1024*1024*(current->geapnum), current->backup_mm, current->mm);
-}
-
-static int pull_data_and_bss(void)
-{
-	int a1, a2;
-	a1 = copy_pte_of_data(current->shared_mm, current->backup_mm);
-	a2 = copy_pte_of_data(current->backup_mm, current->mm);
-	if(!(a1 || a2))return 0;
-	return -1;
-}
-
-static int pull_geap_heap(void)
-{
-	int a1, a2;
-	a1 = copy_region_pte(current->mm->start_brk, current->mm->start_brk+128*1024*1024*(current->geapnum), current->shared_mm, current->backup_mm);
-	a2 = copy_region_pte(current->mm->start_brk, current->mm->start_brk+128*1024*1024*(current->geapnum), current->backup_mm, current->mm);
-	if(!(a1 || a2))return 0;
-	return -1;
-}
-
-
-asmlinkage int sys_commit_geap(void)
-{
-	int a1, a2;
 	if(current->geapnum==0)return -1;
-	a1 = commit_geap_data();
-	a2 = commit_geap_heap();
-	if(!(a1 || a2))return 0;
-	return -1;
+	return jp_push_data_and_bss();
 }
 
-asmlinkage int sys_push_geap(void)
+static int jp_rollback_data_and_bss(void)
+{
+	return jp_copy_pte_of_data_and_bss(current->backup_mm, current->mm);
+}
+
+asmlinkage int sys_jp_rollback_mvspace(void)
+{
+	if(current->geapnum==0)return -1;
+	return jp_rollback_data_and_bss();
+}
+
+static int jp_pull_data_and_bss(void)
 {
 	int a1, a2;
-	if(current->geapnum==0)return -1;
-	a1 = push_geap_data();
-	a2 = push_geap_heap();
+	a1 = jp_copy_pte_of_data_and_bss(current->shared_mm, current->backup_mm);
+	a2 = jp_copy_pte_of_data_and_bss(current->backup_mm, current->mm);
 	if(!(a1 || a2))return 0;
 	return -1;
 }
 
-asmlinkage int sys_pull_geap(void)
+asmlinkage int sys_jp_pull_mvspace(void)
 {
-	int a1, a2;
 	if(current->geapnum==0)return -1;
-	a1 = pull_data_and_bss();
-	a2 = pull_geap_heap();
-	if(!(a1 || a2))return 0;
-	return -1;
+	return jp_pull_data_and_bss();
 }
 
-asmlinkage int sys_rollback_geap(void)
-{
-	int a1, a2;
-	if(current->geapnum==0)return -1;
-	a1 = rollback_data_and_bss();
-	a2 = rollback_geap_heap();
-	if(!(a1 || a2))return 0;
-	return -1;
-}
-
-static void set_geap_flag(void)
+static void jp_set_mvspace_flag(void)
 {
 	current->geapnum = 1;
 	current->geaptotal = 1;
 }
 
-asmlinkage void sys_set_geap_flag(void)
+asmlinkage void sys_jp_set_mvspace_flag(void)
 {
-	set_geap_flag();
+	jp_set_mvspace_flag();
 }
 
-static void print_geap_num(void)
+static void jp_print_mvspace_num(void)
 {
 	printk(KERN_INFO "geap num %d \n", current->geapnum);
 	printk(KERN_INFO "geap start brk %ld \n", current->mm->start_brk);
@@ -4711,9 +4663,9 @@ static void print_geap_num(void)
 
 }
 
-asmlinkage void sys_print_geap_num(void)
+asmlinkage void sys_jp_print_mvspace_num(void)
 {
-	print_geap_num();
+	jp_print_mvspace_num();
 }
 
 

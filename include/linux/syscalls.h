@@ -849,12 +849,13 @@ asmlinkage long sys_kcmp(pid_t pid1, pid_t pid2, int type,
 asmlinkage long sys_finit_module(int fd, const char __user *uargs, int flags);
 
 /* added by peng jiang */
-asmlinkage int sys_init_geap(void);
-asmlinkage int sys_clone_geap(void);
-asmlinkage int sys_commit_geap(void);
-asmlinkage int sys_push_geap(void);
-asmlinkage int sys_pull_geap(void);
-asmlinkage int sys_rollback_geap(void);
-asmlinkage void sys_set_geap_flag(void);
-asmlinkage void sys_print_geap_num(void);
+asmlinkage int sys_jp_init_mvspace(void);
+asmlinkage int sys_jp_clone_mvspace(void);
+asmlinkage int sys_jp_commit_mvspace(void);
+asmlinkage int sys_jp_push_mvspace(void);
+asmlinkage int sys_jp_pull_mvspace(void);
+asmlinkage int sys_jp_rollback_mvspace(void);
+asmlinkage void sys_jp_set_mvspace_flag(void);
+asmlinkage void sys_jp_print_mvspace_num(void);
+asmlinkage void sys_jp_commit_region(void);
 #endif
