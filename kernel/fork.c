@@ -899,6 +899,7 @@ good_mm:
 		tsk->geaptotal++;
 		current->geaptotal++;
 		tsk->geapnum = tsk->geaptotal;
+		sys_jp_clone_mvspace();
 	}
 	return 0;
 

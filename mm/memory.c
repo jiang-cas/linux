@@ -4652,6 +4652,7 @@ static void jp_set_mvspace_flag(void)
 asmlinkage void sys_jp_set_mvspace_flag(void)
 {
 	jp_set_mvspace_flag();
+	jp_init_mvspace();
 }
 
 static void jp_print_mvspace_num(void)
