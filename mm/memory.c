@@ -4410,21 +4410,6 @@ static void jp_copy_region_pte(unsigned long start, unsigned long end, struct mm
 	}
 }
 
-static int jp_copy_pte_of_data_and_bss(struct mm_struct *mm1, struct mm_struct *mm2)
-{
-	unsigned long start;
-	unsigned long end;
-	start = mm1->start_data;
-	end = mm1->start_brk;
-	if(start == mm2->start_data && end == mm2->start_brk) {
-		jp_copy_region_pte(start, end, mm1, mm2);
-		return 0;
-	}
-	return -1;
-}
-
-
-
 /* commit data and bss segment of two address space : from mm1 to mm2
    return 0 if ok
    return -1 if fail
@@ -4493,25 +4478,6 @@ static void jp_commit_region(unsigned long start, unsigned long end)
 			spin_unlock(&mm2->page_table_lock);
 		}
 	}
-}
-
-static int jp_commit_data_and_bss(void)
-{
-	struct mm_struct *mm1 = current->mm;
-	struct mm_struct *mm2 = current->backup_mm;
-	unsigned long start = mm1->start_data;
-	unsigned long end = mm1->start_brk;
-	if(start == mm2->start_data && end == mm2->start_brk) {
-		jp_commit_region(start, end);
-		return 0;
-	}
-	return -1;
-}
-
-asmlinkage int sys_jp_commit_mvspace(void)
-{
-	if(current->geapnum==0)return -1;
-	return jp_commit_data_and_bss();
 }
 
 asmlinkage int sys_jp_commit_region(unsigned long start, unsigned long end)
@@ -4595,52 +4561,39 @@ static void jp_push_region(unsigned long start, unsigned long end)
 			kunmap_atomic(v3);
 		}
 	}
-	jp_copy_pte_of_data_and_bss(current->mm, current->backup_mm);
+	jp_copy_region_pte(start, end, current->mm, current->backup_mm);
 }
 
-static int jp_push_data_and_bss(void)
-{
-	struct mm_struct *mm1 = current->mm;
-	struct mm_struct *mm2 = current->backup_mm;
-	unsigned long start = mm1->start_data;
-	unsigned long end = mm1->start_brk;
-	if(start == mm2->start_data && end == mm2->start_brk) {
-		jp_push_region(start, end);
-		return 0;
-	}
-	return -1;
-}
-
-asmlinkage int sys_jp_push_mvspace(void)
+asmlinkage int sys_jp_push_region(unsigned long start, unsigned long end)
 {
 	if(current->geapnum==0)return -1;
-	return jp_push_data_and_bss();
+	jp_push_region(start, end);
+	return 0;
 }
 
-static int jp_rollback_data_and_bss(void)
+static void jp_rollback_region(unsigned long start, unsigned long end)
 {
-	return jp_copy_pte_of_data_and_bss(current->backup_mm, current->mm);
+	jp_copy_region_pte(start, end, current->backup_mm, current->mm);
 }
 
-asmlinkage int sys_jp_rollback_mvspace(void)
-{
-	if(current->geapnum==0)return -1;
-	return jp_rollback_data_and_bss();
-}
-
-static int jp_pull_data_and_bss(void)
-{
-	int a1, a2;
-	a1 = jp_copy_pte_of_data_and_bss(current->shared_mm, current->backup_mm);
-	a2 = jp_copy_pte_of_data_and_bss(current->backup_mm, current->mm);
-	if(!(a1 || a2))return 0;
-	return -1;
-}
-
-asmlinkage int sys_jp_pull_mvspace(void)
+asmlinkage int sys_jp_rollback_region(unsigned long start, unsigned long end)
 {
 	if(current->geapnum==0)return -1;
-	return jp_pull_data_and_bss();
+	jp_rollback_region(start, end);
+	return 0;
+}
+
+static void jp_pull_region(unsigned long start, unsigned long end)
+{
+	jp_copy_region_pte(start, end, current->shared_mm, current->backup_mm);
+	jp_copy_region_pte(start, end, current->backup_mm, current->mm);
+}
+
+asmlinkage int sys_jp_pull_region(unsigned long start, unsigned long end)
+{
+	if(current->geapnum==0)return -1;
+	jp_pull_region(start, end);
+	return 0;
 }
 
 static void jp_set_mvspace_flag(void)

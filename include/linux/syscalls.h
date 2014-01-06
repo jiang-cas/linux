@@ -851,11 +851,10 @@ asmlinkage long sys_finit_module(int fd, const char __user *uargs, int flags);
 /* added by peng jiang */
 asmlinkage int sys_jp_init_mvspace(void);
 asmlinkage int sys_jp_clone_mvspace(void);
-asmlinkage int sys_jp_commit_mvspace(void);
-asmlinkage int sys_jp_push_mvspace(void);
-asmlinkage int sys_jp_pull_mvspace(void);
-asmlinkage int sys_jp_rollback_mvspace(void);
+asmlinkage int sys_jp_commit_region(unsigned long start, unsigned long end);
+asmlinkage int sys_jp_push_region(unsigned long start, unsigned long end);
+asmlinkage int sys_jp_pull_region(unsigned long start, unsigned long end);
+asmlinkage int sys_jp_rollback_region(unsigned long start, unsigned long end);
 asmlinkage void sys_jp_set_mvspace_flag(void);
 asmlinkage void sys_jp_print_mvspace_num(void);
-asmlinkage void sys_jp_commit_region(void);
 #endif
