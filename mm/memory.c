@@ -4460,12 +4460,12 @@ static void jp_commit_region(unsigned long start, unsigned long end)
 				struct vm_area_struct *vma;
 				pte_t entry;
 				if(pte_none(*pte3)) {
-					printk(KERN_INFO "pte3 %lx \n", pte_val(*pte3));
+			//		printk(KERN_INFO "pte3 dirty %lx \n", pte_dirty(*pte3));
 					page3 = alloc_page(GFP_HIGHUSER);
 
 				}
 				else {
-					printk(KERN_INFO "pte3 %lx \n", pte_val(*pte3));
+			//		printk(KERN_INFO "pte3 dirty %lx \n", pte_dirty(*pte3));
 					get_user_pages(mm3->owner, mm3, pa, 1, 0, 0, &page3, NULL);
 				}
 
