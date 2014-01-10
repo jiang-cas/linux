@@ -4364,10 +4364,10 @@ asmlinkage int sys_jp_clone_mvspace(void)
 static void jp_copy_region_pte(unsigned long start, unsigned long end, struct mm_struct *mm1, struct mm_struct *mm2) 
 {
 	unsigned long addr;
+
 	for(addr=start;addr<end;addr+=PAGE_SIZE) {
 		pgd_t *pgd=NULL; pud_t *pud=NULL; pmd_t *pmd=NULL;
 		pte_t *pte2=NULL;
-		spinlock_t *ptl;
 
 		pgd = pgd_offset(mm2, addr);
 		if(pgd && !pgd_none(*pgd))
@@ -4389,12 +4389,31 @@ static void jp_copy_region_pte(unsigned long start, unsigned long end, struct mm
 			if(page1 != page2) {
 				struct vm_area_struct *vma;
 				pte_t entry;
-				printk(KERN_INFO "pull page2 \n");
+				spinlock_t *ptl;
+
+
 				vma = find_vma(mm2, addr);
-				entry = maybe_mkwrite(pte_mkdirty(mk_pte(page1, vma->vm_page_prot)), vma);
-				set_pte(pte2, entry);
-			//	page_add_anon_rmap(page1, vma, addr);
-				flush_tlb_page(vma, addr);
+				anon_vma_prepare(vma);
+				entry = mk_pte(page1, vma->vm_page_prot);
+				if(vma->vm_flags & VM_WRITE)
+					entry = pte_mkwrite(pte_mkdirty(entry));
+				pte2 = pte_offset_map_lock(mm2, pmd, addr, &ptl);
+				if(PageAnon(page2)) {
+					dec_mm_counter_fast(mm2, MM_ANONPAGES);
+				} else {
+					dec_mm_counter_fast(mm2, MM_FILEPAGES);
+				}
+				if(PageAnon(page1)) {
+					inc_mm_counter_fast(mm2, MM_ANONPAGES);
+					page_add_new_anon_rmap(page1, vma, addr);
+				} else {
+					inc_mm_counter_fast(mm2, MM_FILEPAGES);
+					page_add_file_rmap(page1);
+				}
+				pte_free(mm2, page2);
+				set_pte_at(mm2, addr, pte2, entry);
+				update_mmu_cache(vma, addr, pte2);
+				pte_unmap_unlock(pte2, ptl);
 			}
 		}
 		pte_unmap(pte2);
@@ -4440,8 +4459,7 @@ static void jp_commit_region(unsigned long start, unsigned long end)
 			pud = pud_offset(pgd, addr);
 		if(pud && !pud_none(*pud))
 			pmd = pmd_offset(pud, addr);
-		if(pmd && !pmd_none(*pmd))
-			pte3 = pte_offset_map(pmd, addr);
+		pte3 = pte_offset_map(pmd, addr);
 
 		if(pte1 && pte2 && pte3) {
 
@@ -4459,9 +4477,25 @@ static void jp_commit_region(unsigned long start, unsigned long end)
 				char *dst;
 				struct vm_area_struct *vma;
 				pte_t entry;
+				spinlock_t *ptl;
+
+				vma = find_vma(mm3, addr);
+
 				if(pte_none(*pte3)) {
 			//		printk(KERN_INFO "pte3 dirty %lx \n", pte_dirty(*pte3));
-					page3 = alloc_page(GFP_HIGHUSER);
+					anon_vma_prepare(vma);
+					page3 = alloc_zeroed_user_highpage_movable(vma, addr);
+					__SetPageUptodate(page3);
+					mem_cgroup_newpage_charge(page3, mm3, GFP_KERNEL);
+					entry = mk_pte(page3, vma->vm_page_prot);
+					if(vma->vm_flags & VM_WRITE)
+						entry = pte_mkwrite(pte_mkdirty(entry));
+					pte3 = pte_offset_map_lock(mm3, pmd, addr, &ptl);
+					inc_mm_counter_fast(mm3, MM_ANONPAGES);
+					page_add_new_anon_rmap(page3, vma, addr);
+					set_pte_at(mm3, addr, pte3, entry);
+					update_mmu_cache(vma, addr, pte3);
+					pte_unmap_unlock(pte3, ptl);
 
 				}
 				else {
@@ -4469,7 +4503,6 @@ static void jp_commit_region(unsigned long start, unsigned long end)
 					get_user_pages(mm3->owner, mm3, pa, 1, 0, 0, &page3, NULL);
 				}
 
-				vma = find_vma(mm3, addr);
 				printk(KERN_INFO "commit addr2 %ld\n", addr);
 
 				v1 = kmap_atomic(page1);
@@ -4479,7 +4512,7 @@ static void jp_commit_region(unsigned long start, unsigned long end)
 				src1 = v1; src2 = v2; dst = v3; 
 				for(i=0;i<PAGE_SIZE;i++) {
 					if(src1[i] != src2[i]){
-						printk(KERN_INFO "%d\n", src1[i]);
+						printk(KERN_INFO "mm %d\n, backup_mm %d \n", src1[i], src2[i]);
 						dst[i] = src1[i];
 					}
 				}
@@ -4487,18 +4520,21 @@ static void jp_commit_region(unsigned long start, unsigned long end)
 				kunmap_atomic(v2);
 				kunmap_atomic(v3);
 
-				if(pte_none(*pte3)) {
-					spin_lock(&mm3->page_table_lock);
+		/*		if(pte_none(*pte3)) {
+	spin_lock(&mm3->page_table_lock);
 					entry = maybe_mkwrite(pte_mkdirty(mk_pte(page3, vma->vm_page_prot)), vma);
 					//	pte_free(mm2, page2);
 					set_pte(pte3, entry);
 					flush_tlb_page(vma, addr);
 					lru_cache_add(page3);
 					pte_unmap(pte3);
-					spin_unlock(&mm3->page_table_lock);
-				}
+	spin_unlock(&mm3->page_table_lock);
+				}*/
 			}
 		}
+		pte_unmap(pte1);
+		pte_unmap(pte2);
+		pte_unmap(pte3);
 	}
 }
 
