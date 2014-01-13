@@ -4382,7 +4382,9 @@ static void jp_copy_region_pte(unsigned long start, unsigned long end, struct mm
 			unsigned long pa = addr & PAGE_MASK;
 			
 			get_user_pages(mm1->owner, mm1, pa, 1, 0, 0, &page1, NULL);
-			get_user_pages(mm2->owner, mm2, pa, 1, 0, 0, &page2, NULL);
+//			get_user_pages(mm2->owner, mm2, pa, 1, 0, 0, &page2, NULL);
+//			page1 = pte_page(pte1);
+			page2 = pte_page(*pte2);
 			printk(KERN_INFO "pull page 1\n");
 			printk("page1 %p, page2 %p \n", page1, page2);
 
@@ -4391,18 +4393,19 @@ static void jp_copy_region_pte(unsigned long start, unsigned long end, struct mm
 				pte_t entry;
 				spinlock_t *ptl;
 
-
 				vma = find_vma(mm2, addr);
 				anon_vma_prepare(vma);
 				entry = mk_pte(page1, vma->vm_page_prot);
 				if(vma->vm_flags & VM_WRITE)
 					entry = pte_mkwrite(pte_mkdirty(entry));
-				pte2 = pte_offset_map_lock(mm2, pmd, addr, &ptl);
-				if(PageAnon(page2)) {
-					dec_mm_counter_fast(mm2, MM_ANONPAGES);
-				} else {
-					dec_mm_counter_fast(mm2, MM_FILEPAGES);
+				if (!is_zero_pfn(pte_pfn(*pte2))) {
+					if(PageAnon(page2)) {
+						dec_mm_counter_fast(mm2, MM_ANONPAGES);
+					} else {
+						dec_mm_counter_fast(mm2, MM_FILEPAGES);
+					}
 				}
+				pte_free(mm2, page2);
 				if(PageAnon(page1)) {
 					inc_mm_counter_fast(mm2, MM_ANONPAGES);
 					page_add_new_anon_rmap(page1, vma, addr);
@@ -4410,7 +4413,7 @@ static void jp_copy_region_pte(unsigned long start, unsigned long end, struct mm
 					inc_mm_counter_fast(mm2, MM_FILEPAGES);
 					page_add_file_rmap(page1);
 				}
-				pte_free(mm2, page2);
+				pte2 = pte_offset_map_lock(mm2, pmd, addr, &ptl);
 				set_pte_at(mm2, addr, pte2, entry);
 				update_mmu_cache(vma, addr, pte2);
 				pte_unmap_unlock(pte2, ptl);
